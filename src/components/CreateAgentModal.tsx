@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSimStore, type CreateAgentInput } from '../store/useSimStore'
 import type { AuthorityLevel } from '../engine/types'
+import { applyColdStartPolicy, type ColdStartResult } from '../engine/coldStartPolicy'
 import { fonts, colors } from '../styles/tokens'
+import { authorityLabel } from '../engine/trustEngine'
 
 const AUTHORITY_OPTIONS: { value: AuthorityLevel; label: string }[] = [
   { value: 0, label: 'Observer' },
@@ -41,6 +43,8 @@ export function CreateAgentModal() {
   const setOpen = useSimStore((s) => s.setCreateModalOpen)
   const createAgent = useSimStore((s) => s.createAgent)
   const [submitting, setSubmitting] = useState(false)
+  const [overrideNotice, setOverrideNotice] = useState<ColdStartResult | null>(null)
+  const [pendingInput, setPendingInput] = useState<CreateAgentInput | null>(null)
   const [form, setForm] = useState({
     name: '',
     role: '',
@@ -51,11 +55,33 @@ export function CreateAgentModal() {
     requiredApprovals: '',
   })
 
+  const resetForm = () => {
+    setForm({
+      name: '',
+      role: '',
+      objective: '',
+      spendingLimit: 5000,
+      authorityLevel: 2,
+      riskTolerance: 'moderate',
+      requiredApprovals: '',
+    })
+    setOverrideNotice(null)
+    setPendingInput(null)
+    setSubmitting(false)
+  }
+
+  const finalizeCreate = (input: CreateAgentInput) => {
+    createAgent(input)
+    resetForm()
+  }
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.name.trim() || !form.role.trim()) return
+    if (!form.name.trim() || !form.role.trim() || submitting) return
     setSubmitting(true)
-    // OpenAI is non-blocking: try briefly, fall back to local template
+
+    const policy = applyColdStartPolicy(form.authorityLevel, form.spendingLimit)
+
     const blurbPromise = fetchPersonalityBlurb({
       name: form.name,
       role: form.role,
@@ -66,20 +92,39 @@ export function CreateAgentModal() {
       (await Promise.race([blurbPromise, timeout])) ??
       `${form.name} operates as ${form.role} with a mandate to ${form.objective || 'support organizational objectives'}.`
 
-    createAgent({
-      ...form,
+    const approvalText =
+      form.requiredApprovals.trim() ||
+      `All transactions require approval until reputation is established (threshold $${policy.requiresApprovalBelow.toLocaleString()})`
+
+    const input: CreateAgentInput = {
+      name: form.name,
+      role: form.role,
+      objective: form.objective,
+      spendingLimit: form.spendingLimit,
+      authorityLevel: policy.effectiveAuthorityLevel,
+      riskTolerance: form.riskTolerance,
+      requiredApprovals: approvalText,
       personalityBlurb,
-    })
-    setSubmitting(false)
-    setForm({
-      name: '',
-      role: '',
-      objective: '',
-      spendingLimit: 5000,
-      authorityLevel: 2,
-      riskTolerance: 'moderate',
-      requiredApprovals: '',
-    })
+    }
+
+    if (policy.effectiveAuthorityLevel < form.authorityLevel) {
+      setPendingInput(input)
+      setOverrideNotice(policy)
+      setSubmitting(false)
+      // Hold override notice ~2s then deploy with capped authority
+      window.setTimeout(() => {
+        if (pendingInput || input) {
+          finalizeCreate(input)
+        }
+      }, 2000)
+      return
+    }
+
+    finalizeCreate(input)
+  }
+
+  const onDismissOverride = () => {
+    if (pendingInput) finalizeCreate(pendingInput)
   }
 
   return (
@@ -112,13 +157,56 @@ export function CreateAgentModal() {
               </h2>
               <button
                 type="button"
-                onClick={() => setOpen(false)}
+                onClick={() => {
+                  resetForm()
+                  setOpen(false)
+                }}
                 className="text-sm"
                 style={{ color: 'var(--text-muted)' }}
               >
                 ✕
               </button>
             </div>
+
+            <AnimatePresence>
+              {overrideNotice && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="mb-4 rounded-md border px-3 py-2.5"
+                  style={{
+                    borderColor: 'rgba(255,184,77,0.55)',
+                    background: 'rgba(255,184,77,0.1)',
+                  }}
+                >
+                  <div
+                    className="mb-1 text-[10px] font-semibold tracking-[0.18em] uppercase"
+                    style={{ color: colors.amber, fontFamily: fonts.mono }}
+                  >
+                    Cold-start override
+                  </div>
+                  <p className="text-xs leading-snug" style={{ color: 'var(--text-primary)' }}>
+                    {overrideNotice.reason}
+                  </p>
+                  <p
+                    className="mt-1.5 text-[11px] tabular-nums"
+                    style={{ color: colors.amber, fontFamily: fonts.mono }}
+                  >
+                    Effective authority: {authorityLabel(overrideNotice.effectiveAuthorityLevel)}{' '}
+                    (capped)
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onDismissOverride}
+                    className="mt-2 text-[10px] tracking-wide uppercase underline"
+                    style={{ color: 'var(--text-muted)', fontFamily: fonts.mono }}
+                  >
+                    Continue
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <div className="flex flex-col gap-3">
               <Field label="Name">
@@ -127,7 +215,8 @@ export function CreateAgentModal() {
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   className="field"
-                  placeholder="e.g. ORION"
+                  placeholder="e.g. MERCURY"
+                  disabled={!!overrideNotice}
                 />
               </Field>
               <Field label="Role">
@@ -137,6 +226,7 @@ export function CreateAgentModal() {
                   onChange={(e) => setForm({ ...form, role: e.target.value })}
                   className="field"
                   placeholder="e.g. Vendor Research"
+                  disabled={!!overrideNotice}
                 />
               </Field>
               <Field label="Objective">
@@ -145,6 +235,7 @@ export function CreateAgentModal() {
                   onChange={(e) => setForm({ ...form, objective: e.target.value })}
                   className="field"
                   placeholder="Single-sentence objective"
+                  disabled={!!overrideNotice}
                 />
               </Field>
               <Field label="Initial Budget ($)">
@@ -156,6 +247,7 @@ export function CreateAgentModal() {
                     setForm({ ...form, spendingLimit: Number(e.target.value) })
                   }
                   className="field"
+                  disabled={!!overrideNotice}
                 />
               </Field>
               <Field label="Initial Authority">
@@ -168,6 +260,7 @@ export function CreateAgentModal() {
                     })
                   }
                   className="field"
+                  disabled={!!overrideNotice}
                 >
                   {AUTHORITY_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>
@@ -187,6 +280,7 @@ export function CreateAgentModal() {
                     })
                   }
                   className="field"
+                  disabled={!!overrideNotice}
                 >
                   <option value="conservative">Conservative</option>
                   <option value="moderate">Moderate</option>
@@ -201,17 +295,18 @@ export function CreateAgentModal() {
                   }
                   className="field"
                   placeholder='e.g. Purchases above $500'
+                  disabled={!!overrideNotice}
                 />
               </Field>
             </div>
 
             <button
               type="submit"
-              disabled={submitting}
-              className="mt-5 w-full rounded-md px-3 py-2.5 text-sm font-semibold"
+              disabled={submitting || !!overrideNotice}
+              className="mt-5 w-full rounded-md px-3 py-2.5 text-sm font-semibold disabled:opacity-50"
               style={{ background: colors.cyan, color: '#0A0B0F' }}
             >
-              {submitting ? 'Creating…' : 'Deploy Agent'}
+              {submitting ? 'Creating…' : overrideNotice ? 'Applying override…' : 'Deploy Agent'}
             </button>
           </motion.form>
 

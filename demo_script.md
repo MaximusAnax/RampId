@@ -245,8 +245,17 @@ SENTINEL  BLOCKED NOVA.
 - [ ] The what-if slider (Part 5) must visibly respond in under 2 seconds, or the "this is live" claim collapses. Rehearse this specific interaction until it's boring to you.
 - [ ] Do not explain the tagline. Say it once, and stop talking.
 - [ ] If asked in Q&A "is this real money," have one crisp line ready: *"Simulation engine end to end today — deliberately. The trust and governance logic underneath is what's real, and it's what would sit in front of Ramp's actual rails tomorrow."*
+- [ ] If a technical judge asks about agents gaming each other's trust / collusion: *"We detect correlated convergence today; collusion-resistant verification via independent, randomized verifier assignment is the natural next layer — that's an open problem the research explicitly flags too."* (Chishti et al., arXiv 2605.00073 — agent-verifier collusion.)
+- [ ] Ad-lib moment: create a new agent (e.g. Mercury) requesting Autonomous authority — the cold-start policy visibly caps it to Assistant. Worth calling out live.
 
 ---
+
+## Q&A Prep — Agent-Verifier Collusion
+
+No implementation in this build. If pushed on "what about agents coordinating false approvals," use the line above. Distinguish clearly:
+
+- **What we show today:** correlated multi-agent convergence (SynapseFlow) + domain-conditioned reputation (Nova's cost card vs vendor-verification card).
+- **What the paper flags next:** agent-verifier collusion — a harder threat than convergence detection alone.
 
 ## Optional Cuts If Time-Boxed to 4 Minutes
 

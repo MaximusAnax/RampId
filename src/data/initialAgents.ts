@@ -1,4 +1,4 @@
-import type { Agent } from '../engine/types'
+import type { Agent, ReputationCard } from '../engine/types'
 
 const dims = (
   policyCompliance: number,
@@ -14,6 +14,22 @@ const dims = (
   reliability,
   riskAwareness,
   collaboration,
+})
+
+const card = (
+  domain: string,
+  score: number,
+  taskCount: number,
+  low: number,
+  medium: number,
+  high: number,
+  lastUpdated = '2026-07-17T18:00:00Z',
+): ReputationCard => ({
+  domain,
+  score,
+  taskCount,
+  verificationBreakdown: { low, medium, high },
+  lastUpdated,
 })
 
 /** Cluster layout positions (React Flow coords) */
@@ -43,6 +59,11 @@ export const initialAgents: Agent[] = [
     flash: null,
     floatingDelta: null,
     blockReason: null,
+    reputationCards: [
+      card('strategic_oversight', 96, 62, 4, 22, 36),
+      card('budget_allocation', 94, 41, 2, 18, 21),
+      card('escalation_review', 91, 28, 1, 9, 18),
+    ],
   },
   {
     id: 'vega',
@@ -61,6 +82,11 @@ export const initialAgents: Agent[] = [
     flash: null,
     floatingDelta: null,
     blockReason: null,
+    reputationCards: [
+      card('contract_negotiation', 95, 54, 3, 20, 31),
+      card('commercial_terms', 92, 38, 4, 16, 18),
+      card('vendor_verification', 71, 12, 5, 5, 2),
+    ],
   },
   {
     id: 'sentinel',
@@ -79,6 +105,11 @@ export const initialAgents: Agent[] = [
     flash: null,
     floatingDelta: null,
     blockReason: null,
+    reputationCards: [
+      card('governance_risk', 97, 89, 2, 24, 63),
+      card('correlation_detection', 94, 71, 1, 18, 52),
+      card('vendor_verification', 86, 22, 2, 8, 12),
+    ],
   },
   {
     id: 'atlas',
@@ -97,6 +128,11 @@ export const initialAgents: Agent[] = [
     flash: null,
     floatingDelta: null,
     blockReason: null,
+    reputationCards: [
+      card('procurement', 85, 63, 8, 35, 20),
+      card('vendor_sourcing', 80, 44, 10, 24, 10),
+      card('vendor_verification', 64, 15, 9, 5, 1),
+    ],
   },
   {
     id: 'nova',
@@ -115,6 +151,11 @@ export const initialAgents: Agent[] = [
     flash: null,
     floatingDelta: null,
     blockReason: null,
+    // Deliberate gap: strong cost track, weak vendor-verification — Sentinel's real reason
+    reputationCards: [
+      card('cost_optimization', 84, 47, 5, 30, 12),
+      card('vendor_verification', 38, 3, 3, 0, 0),
+    ],
   },
 ]
 

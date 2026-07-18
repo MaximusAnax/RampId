@@ -125,14 +125,15 @@ export const synapseFlowScenario: SimEvent[] = [
     type: 'block',
     agentId: 'sentinel',
     taskId: null,
-    message: 'BLOCKED NOVA.',
+    message:
+      "BLOCKED NOVA. SynapseFlow vendor claims verified only via automated scan (Strength: Low). Nova's vendor-verification track record: 3 tasks, no high-strength history. Expert-equivalent verification required before autonomous execution at this transaction size.",
     trustImpact: null,
     authorityImpact: null,
     delayMs: 1000,
     downstreamEffects: [
-      'block_reason:nova:BLOCKED — Reason: Risk review incomplete.',
+      'block_reason:nova:BLOCKED — SynapseFlow vendor claims verified only via automated scan (Strength: Low). Nova\'s vendor-verification track record: 3 tasks, no high-strength history. Expert-equivalent verification required before autonomous execution at this transaction size.',
       'flash:nova:red',
-      'rel_block:sentinel-nova:Risk review incomplete',
+      'rel_block:sentinel-nova:Low-strength verification; weak vendor-verification card',
       'rel_sever:nova-out',
       'status:sentinel:working',
       'metrics:blockedWorkflows:1',
@@ -144,12 +145,13 @@ export const synapseFlowScenario: SimEvent[] = [
     type: 'trust_update',
     agentId: 'system',
     taskId: null,
-    message: 'Trust update: NOVA 76 → 68',
+    message:
+      "Trust update: NOVA 76 → 68 — Cost-optimization reputation (84) does not transfer to vendor-verification judgment (38). Domain-specific competence does not generalize — Nova's overall trust score should not have implied readiness for this decision.",
     trustImpact: -8,
     authorityImpact: null,
     delayMs: 4000, // hold 3+ seconds on BLOCK
     downstreamEffects: [
-      'trust:nova:-8:Attempted to proceed without verification',
+      'trust:nova:-8:Cost-optimization reputation (84) does not transfer to vendor-verification judgment (38). Domain-specific competence does not generalize — Nova\'s overall trust score should not have implied readiness for this decision. Spending authority cut — collateral slashed following the block.',
       'spend:nova:2500',
     ],
   },

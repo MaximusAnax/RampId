@@ -51,7 +51,7 @@ function TypingLine({
           {timestamp}
         </span>
       </div>
-      <span className="text-[12px] leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+      <span className="text-[12px] leading-relaxed break-words whitespace-pre-wrap" style={{ color: 'var(--text-primary)' }}>
         {shown}
         <span className="animate-pulse opacity-60">▌</span>
       </span>
@@ -173,7 +173,7 @@ export function ActivityFeed({ expanded, onToggle }: ActivityFeedProps) {
                       </span>
                     </div>
                     <span
-                      className="text-[12px] leading-relaxed"
+                      className="text-[12px] leading-relaxed break-words whitespace-pre-wrap"
                       style={{ color: 'var(--text-primary)' }}
                     >
                       {item.message}

@@ -106,8 +106,9 @@ function agentsMap(): Record<string, Agent> {
       {
         ...structuredClone(a),
         isNew: false,
-        requiredApprovals: null,
-        personalityBlurb: null,
+        requiredApprovals: a.requiredApprovals ?? null,
+        personalityBlurb: a.personalityBlurb ?? null,
+        reputationCards: a.reputationCards ?? [],
       },
     ]),
   )
@@ -350,6 +351,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
       isNew: true,
       requiredApprovals: input.requiredApprovals || null,
       personalityBlurb: input.personalityBlurb ?? null,
+      reputationCards: [],
     }
 
     set((s) => ({
@@ -502,6 +504,7 @@ export function applyEffect(
     }
     case 'add_task': {
       const [id, name, owner, status, risk] = payload.split(':')
+      const isVendorVerify = id === 'vendor-verification'
       get().upsertTask({
         id,
         name,
@@ -511,6 +514,8 @@ export function applyEffect(
         riskLevel: (risk as Task['riskLevel']) ?? 'medium',
         financialValue: null,
         requiredAuthority: 2,
+        verificationStrength: isVendorVerify ? 'low' : 'none',
+        verificationMethod: isVendorVerify ? 'Automated vendor scan' : null,
       })
       break
     }
