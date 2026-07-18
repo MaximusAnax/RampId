@@ -16,6 +16,21 @@ export interface TrustHistoryEntry {
   reason: string
 }
 
+/** Context-conditioned reputation — per-domain scores (arXiv 2605.00073) */
+export interface ReputationCard {
+  domain: string
+  score: number
+  taskCount: number
+  verificationBreakdown: {
+    low: number
+    medium: number
+    high: number
+  }
+  lastUpdated: string
+}
+
+export type VerificationStrength = 'none' | 'low' | 'medium' | 'high'
+
 export interface Agent {
   id: string
   name: string
@@ -38,6 +53,8 @@ export interface Agent {
   isNew?: boolean
   requiredApprovals?: string | null
   personalityBlurb?: string | null
+  /** Per-domain reputation cards — additive; scalar trustScore retained */
+  reputationCards: ReputationCard[]
 }
 
 export type RelationshipType =
@@ -68,6 +85,8 @@ export interface Task {
   riskLevel: 'low' | 'medium' | 'high'
   financialValue: number | null
   requiredAuthority: AuthorityLevel
+  verificationStrength: VerificationStrength
+  verificationMethod: string | null
 }
 
 export interface SimEvent {

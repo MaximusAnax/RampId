@@ -104,6 +104,84 @@ export function AgentDetailPanel() {
               ))}
             </div>
 
+            {agent.reputationCards && agent.reputationCards.length > 0 && (
+              <div>
+                <Label>Reputation by Domain</Label>
+                <div className="flex flex-col gap-2">
+                  {agent.reputationCards.map((card) => {
+                    const total =
+                      card.verificationBreakdown.low +
+                      card.verificationBreakdown.medium +
+                      card.verificationBreakdown.high
+                    const pct = (n: number) => (total === 0 ? 0 : (n / total) * 100)
+                    return (
+                      <div
+                        key={card.domain}
+                        className="rounded border px-2.5 py-2"
+                        style={{ borderColor: 'var(--border-subtle)' }}
+                      >
+                        <div className="mb-1 flex items-baseline justify-between gap-2">
+                          <span
+                            className="text-[11px] font-medium"
+                            style={{ fontFamily: fonts.mono }}
+                          >
+                            {card.domain.replace(/_/g, ' ')}
+                          </span>
+                          <span
+                            className="text-sm font-semibold tabular-nums"
+                            style={{
+                              color: trustScoreColor(card.score),
+                              fontFamily: fonts.mono,
+                            }}
+                          >
+                            {card.score}
+                          </span>
+                        </div>
+                        <div
+                          className="mb-1.5 text-[10px]"
+                          style={{ color: 'var(--text-muted)', fontFamily: fonts.mono }}
+                        >
+                          {card.taskCount} tasks informing score
+                        </div>
+                        <div
+                          className="flex h-1.5 w-full overflow-hidden rounded-sm"
+                          style={{ background: 'rgba(148,163,184,0.15)' }}
+                          title={`L ${card.verificationBreakdown.low} · M ${card.verificationBreakdown.medium} · H ${card.verificationBreakdown.high}`}
+                        >
+                          <div
+                            style={{
+                              width: `${pct(card.verificationBreakdown.low)}%`,
+                              background: colors.amber,
+                            }}
+                          />
+                          <div
+                            style={{
+                              width: `${pct(card.verificationBreakdown.medium)}%`,
+                              background: colors.slate,
+                            }}
+                          />
+                          <div
+                            style={{
+                              width: `${pct(card.verificationBreakdown.high)}%`,
+                              background: colors.cyan,
+                            }}
+                          />
+                        </div>
+                        <div
+                          className="mt-1 flex justify-between text-[9px] tabular-nums"
+                          style={{ color: 'var(--text-muted)', fontFamily: fonts.mono }}
+                        >
+                          <span>L {card.verificationBreakdown.low}</span>
+                          <span>M {card.verificationBreakdown.medium}</span>
+                          <span>H {card.verificationBreakdown.high}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="flex justify-between text-sm">
               <span style={{ color: 'var(--text-muted)' }}>Status</span>
               <span style={{ fontFamily: fonts.mono }}>{agent.status}</span>

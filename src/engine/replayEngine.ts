@@ -28,8 +28,9 @@ function seedAgents(): Record<string, Agent> {
       {
         ...structuredClone(a),
         isNew: false,
-        requiredApprovals: null,
-        personalityBlurb: null,
+        requiredApprovals: a.requiredApprovals ?? null,
+        personalityBlurb: a.personalityBlurb ?? null,
+        reputationCards: a.reputationCards ?? [],
       },
     ]),
   )
@@ -142,6 +143,7 @@ export function replaySynapseFlowToIndex(index: number): ReplaySnapshot {
       }
       case 'add_task': {
         const [id, name, owner, status, risk] = payload.split(':')
+        const isVendorVerify = id === 'vendor-verification'
         upsertTask({
           id,
           name,
@@ -151,6 +153,8 @@ export function replaySynapseFlowToIndex(index: number): ReplaySnapshot {
           riskLevel: (risk as Task['riskLevel']) ?? 'medium',
           financialValue: null,
           requiredAuthority: 2,
+          verificationStrength: isVendorVerify ? 'low' : 'none',
+          verificationMethod: isVendorVerify ? 'Automated vendor scan' : null,
         })
         break
       }
