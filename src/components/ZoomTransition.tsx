@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { CLUSTER_LAYOUT } from '../data/initialAgents'
+import type { TransitionDirection } from '../store/useSimStore'
 import { colors, fonts } from '../styles/tokens'
 
 const HERO_ORDER = ['aurora', 'vega', 'sentinel', 'atlas', 'nova'] as const
@@ -13,14 +14,17 @@ const LABELS: Record<string, string> = {
 }
 
 interface ZoomTransitionProps {
-  progress: number // 0–1
+  /** 0–1 forward progress (in); same axis used for out via direction */
+  progress: number
   heroOrigins: { id: string; x: number; y: number }[]
   useFallback: boolean
   graphOffset: { x: number; y: number }
+  direction?: TransitionDirection
 }
 
 /**
- * Morph overlay: glowing dots fly from swarm hero positions to cluster card positions.
+ * Morph overlay: glowing dots fly between swarm hero positions and cluster card positions.
+ * direction 'in': origins → cards; 'out': cards → origins (true reverse of the same ease).
  * When useFallback is true, this layer is skipped (cards stagger in via AgentGraph).
  */
 export function ZoomTransition({
@@ -28,13 +32,18 @@ export function ZoomTransition({
   heroOrigins,
   useFallback,
   graphOffset,
+  direction = 'in',
 }: ZoomTransitionProps) {
   if (useFallback || progress <= 0 || progress >= 1) return null
 
-  // Ease
-  const t = easeInOutCubic(progress)
-  // Cross-fade: dots fade out in second half as cards fade in
-  const dotOpacity = progress < 0.55 ? 1 : Math.max(0, 1 - (progress - 0.55) / 0.35)
+  // progress 0→1 for zoom-in, 1→0 for pull-back — both map the same axis:
+  // 0 = swarm origins, 1 = cluster cards
+  void direction
+  const forwardT = progress
+  const t = easeInOutCubic(forwardT)
+  // Cross-fade: dots fade as cards take over near the clustered end of the axis
+  const dotOpacity =
+    forwardT < 0.55 ? 1 : Math.max(0, 1 - (forwardT - 0.55) / 0.35)
 
   return (
     <div className="pointer-events-none absolute inset-0 z-30">
@@ -73,13 +82,13 @@ export function ZoomTransition({
                 boxShadow: `0 0 ${12 + t * 40}px ${colors.cyan}, 0 0 ${4 + t * 20}px ${colors.blue}`,
               }}
             />
-            {progress > 0.35 && (
+            {forwardT > 0.35 && (
               <div
                 className="absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap text-[10px] font-semibold tracking-[0.2em]"
                 style={{
                   fontFamily: fonts.display,
                   color: colors.textPrimary,
-                  opacity: Math.min(1, (progress - 0.35) / 0.3) * dotOpacity,
+                  opacity: Math.min(1, (forwardT - 0.35) / 0.3) * dotOpacity,
                 }}
               >
                 {LABELS[id]}
@@ -96,12 +105,18 @@ function easeInOutCubic(t: number) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
 }
 
-/** Compute CSS transform for swarm canvas during zoom */
+/**
+ * CSS transform for swarm canvas during zoom.
+ * progress 0 = full field; 1 = zoomed into heroes (same axis for in and out;
+ * pull-back drives progress from 1 → 0).
+ */
 export function swarmZoomTransform(
   progress: number,
   heroCenter: { x: number; y: number },
   viewport: { w: number; h: number },
+  _direction: TransitionDirection = 'in',
 ): React.CSSProperties {
+  void _direction
   const t = easeInOutCubic(Math.min(1, progress))
   const scale = 1 + t * 2.8
   const tx = (viewport.w / 2 - heroCenter.x) * t * scale

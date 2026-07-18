@@ -1,17 +1,26 @@
 import { motion } from 'framer-motion'
-import { useSimStore } from '../store/useSimStore'
+import {
+  CLUSTER_METRICS,
+  SWARM_METRICS,
+  useSimStore,
+} from '../store/useSimStore'
 import { formatMoney } from '../engine/trustEngine'
 import { fonts, colors } from '../styles/tokens'
 import { stopScenario } from '../engine/eventEngine'
+
+const ORG_WIDE_EXTRA =
+  SWARM_METRICS.activeAgents - CLUSTER_METRICS.activeAgents
 
 function Metric({
   label,
   value,
   emphasize,
+  subline,
 }: {
   label: string
   value: string
   emphasize?: boolean
+  subline?: string
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5 px-3 first:pl-0 lg:px-4">
@@ -34,6 +43,18 @@ function Metric({
       >
         {value}
       </motion.span>
+      {subline && (
+        <span
+          className="text-[10px] tabular-nums tracking-wide"
+          style={{
+            fontFamily: fonts.mono,
+            color: 'var(--text-muted)',
+            opacity: 0.75,
+          }}
+        >
+          {subline}
+        </span>
+      )}
     </div>
   )
 }
@@ -44,6 +65,7 @@ export function StatusBar() {
   const resetDemo = useSimStore((s) => s.resetDemo)
   const setCreateModalOpen = useSimStore((s) => s.setCreateModalOpen)
   const showClusterExtras = viewMode === 'cluster' || viewMode === 'transitioning'
+  const showOrgWide = viewMode === 'cluster'
 
   const onReset = () => {
     stopScenario()
@@ -90,6 +112,27 @@ export function StatusBar() {
         </button>
       </div>
 
+      <div
+        className="flex shrink-0 items-center divide-x"
+        style={{ borderColor: 'var(--border-subtle)' }}
+      >
+        <Metric
+          label="Active Agents"
+          value={m.activeAgents.toLocaleString()}
+          emphasize
+          subline={
+            showOrgWide ? `+${ORG_WIDE_EXTRA.toLocaleString()} org-wide` : undefined
+          }
+        />
+        <Metric
+          label="Tasks In Progress"
+          value={m.tasksInProgress.toLocaleString()}
+        />
+        {showClusterExtras && (
+          <>
+            <Metric label="Blocked Workflows" value={String(m.blockedWorkflows)} />
+            <Metric label="Approvals Waiting" value={String(m.approvalsWaiting)} />
+          </>
       <div className="flex items-center gap-3">
         {viewMode === 'cluster' && (
           <button
