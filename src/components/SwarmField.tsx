@@ -1,6 +1,10 @@
 import { useEffect, useRef } from 'react'
 import { Application, Container, Graphics } from 'pixi.js'
-import { createSwarmParticles, getHeroScreenCenter } from '../data/swarmConfig'
+import {
+  createBackgroundParticles,
+  createSwarmParticles,
+  getHeroScreenCenter,
+} from '../data/swarmConfig'
 import {
   pulseBrightness,
   stepParticle,
@@ -10,28 +14,43 @@ import {
 import type { SwarmParticle } from '../engine/types'
 import { colors } from '../styles/tokens'
 
+export type SwarmFieldMode = 'foreground' | 'background'
+
 interface SwarmFieldProps {
   active: boolean
-  /** 0–1 during zoom; fades periphery */
+  mode?: SwarmFieldMode
+  /** Pause ticker without unmounting (background mode when modals open) */
+  paused?: boolean
+  /** 0–1 during zoom; fades periphery (foreground only) */
   zoomProgress?: number
   /** CSS transform applied to canvas wrapper during zoom */
   transformStyle?: React.CSSProperties
   onHeroCenter?: (center: { x: number; y: number }) => void
   cullNonHero?: boolean
+  /** Extra CSS opacity multiplier (e.g. fade-in during transition overlap) */
+  opacity?: number
 }
+
+const BG_MAX_ALPHA = 0.16
+const BG_BLUR_PX = 8
 
 export function SwarmField({
   active,
+  mode = 'foreground',
+  paused = false,
   zoomProgress = 0,
   transformStyle,
   onHeroCenter,
   cullNonHero = false,
+  opacity = 1,
 }: SwarmFieldProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const particlesRef = useRef<SwarmParticle[]>([])
   const linksRef = useRef<SwarmLink[]>([])
   const zoomRef = useRef(zoomProgress)
   const cullRef = useRef(cullNonHero)
+  const pausedRef = useRef(paused)
+  const modeRef = useRef(mode)
   const onHeroCenterRef = useRef(onHeroCenter)
 
   useEffect(() => {
@@ -41,6 +60,14 @@ export function SwarmField({
   useEffect(() => {
     cullRef.current = cullNonHero
   }, [cullNonHero])
+
+  useEffect(() => {
+    pausedRef.current = paused
+  }, [paused])
+
+  useEffect(() => {
+    modeRef.current = mode
+  }, [mode])
 
   useEffect(() => {
     onHeroCenterRef.current = onHeroCenter
@@ -53,6 +80,7 @@ export function SwarmField({
     let removeResize: (() => void) | undefined
     let app: Application | null = null
     const host = hostRef.current
+    const isBackground = mode === 'background'
 
     const boot = async () => {
       const instance = new Application()
@@ -84,12 +112,20 @@ export function SwarmField({
 
       const w = instance.screen.width
       const h = instance.screen.height
-      particlesRef.current = createSwarmParticles(w, h)
+      particlesRef.current = isBackground
+        ? createBackgroundParticles(w, h)
+        : createSwarmParticles(w, h)
       linksRef.current = []
 
-      onHeroCenterRef.current?.(getHeroScreenCenter(w, h))
+      if (!isBackground) {
+        onHeroCenterRef.current?.(getHeroScreenCenter(w, h))
+      }
 
       const drawVignette = () => {
+        if (isBackground) {
+          vignette.clear()
+          return
+        }
         const vw = instance.screen.width
         const vh = instance.screen.height
         vignette.clear()
@@ -104,16 +140,22 @@ export function SwarmField({
 
       let last = performance.now()
       instance.ticker.add(() => {
+        if (pausedRef.current) {
+          last = performance.now()
+          return
+        }
+
         const now = performance.now()
         const dt = Math.min(now - last, 50)
         last = now
         const particles = particlesRef.current
         const zp = zoomRef.current
         const cull = cullRef.current
+        const bg = modeRef.current === 'background'
 
         for (const p of particles) {
-          if (cull && !p.isHero) continue
-          const speedScale = 1 - zp * 0.85
+          if (!bg && cull && !p.isHero) continue
+          const speedScale = bg ? 0.45 : 1 - zp * 0.85
           stepParticle(
             p,
             dt * speedScale,
@@ -123,41 +165,57 @@ export function SwarmField({
           )
         }
 
-        linksRef.current = cull
-          ? []
-          : updateLinks(particles, linksRef.current, dt)
+        if (bg) {
+          linksRef.current = []
+          linksGfx.clear()
+        } else {
+          linksRef.current = cull
+            ? []
+            : updateLinks(particles, linksRef.current, dt)
 
-        linksGfx.clear()
-        for (const link of linksRef.current) {
-          const a = particles[link.a]
-          const b = particles[link.b]
-          if (!a || !b) continue
-          if (cull && (!a.isHero || !b.isHero)) continue
-          const alpha = (link.life / link.maxLife) * 0.25 * (1 - zp)
-          linksGfx.moveTo(a.x, a.y)
-          linksGfx.lineTo(b.x, b.y)
-          linksGfx.stroke({ width: 1, color: 0x2dd4bf, alpha })
+          linksGfx.clear()
+          for (const link of linksRef.current) {
+            const a = particles[link.a]
+            const b = particles[link.b]
+            if (!a || !b) continue
+            if (cull && (!a.isHero || !b.isHero)) continue
+            const alpha = (link.life / link.maxLife) * 0.25 * (1 - zp)
+            linksGfx.moveTo(a.x, a.y)
+            linksGfx.lineTo(b.x, b.y)
+            linksGfx.stroke({ width: 1, color: 0x2dd4bf, alpha })
+          }
         }
 
         dotsGfx.clear()
         for (const p of particles) {
-          if (cull && !p.isHero) continue
+          if (!bg && cull && !p.isHero) continue
 
-          let alpha = pulseBrightness(p, now)
-          if (!p.isHero) {
-            alpha *= Math.max(0, 1 - zp * 1.4)
-            alpha *= 1 - zp * 0.5
+          let alpha: number
+          if (bg) {
+            // Soft ambient only — no pulse-brightening events
+            alpha = 0.1 + 0.06 * (0.5 + 0.5 * Math.sin(now * 0.001 + p.pulsePhase))
+            alpha = Math.min(BG_MAX_ALPHA, alpha)
           } else {
-            alpha = Math.min(1, alpha + zp * 0.3)
+            alpha = pulseBrightness(p, now)
+            if (!p.isHero) {
+              alpha *= Math.max(0, 1 - zp * 1.4)
+              alpha *= 1 - zp * 0.5
+            } else {
+              alpha = Math.min(1, alpha + zp * 0.3)
+            }
           }
 
           if (alpha < 0.02) continue
 
-          const radius = p.isHero ? 3.5 + zp * 6 : 2 + (alpha > 0.7 ? 1 : 0)
+          const radius = bg
+            ? 2.5
+            : p.isHero
+              ? 3.5 + zp * 6
+              : 2 + (alpha > 0.7 ? 1 : 0)
           const color = Number.parseInt(p.domainColor.replace('#', ''), 16)
 
-          dotsGfx.circle(p.x, p.y, radius * 2.2)
-          dotsGfx.fill({ color, alpha: alpha * 0.25 })
+          dotsGfx.circle(p.x, p.y, radius * (bg ? 3 : 2.2))
+          dotsGfx.fill({ color, alpha: alpha * (bg ? 0.4 : 0.25) })
           dotsGfx.circle(p.x, p.y, radius)
           dotsGfx.fill({ color, alpha })
         }
@@ -165,9 +223,11 @@ export function SwarmField({
 
       const onResize = () => {
         drawVignette()
-        onHeroCenterRef.current?.(
-          getHeroScreenCenter(instance.screen.width, instance.screen.height),
-        )
+        if (!isBackground) {
+          onHeroCenterRef.current?.(
+            getHeroScreenCenter(instance.screen.width, instance.screen.height),
+          )
+        }
       }
       window.addEventListener('resize', onResize)
       removeResize = () => window.removeEventListener('resize', onResize)
@@ -190,17 +250,25 @@ export function SwarmField({
         }
       }
     }
-  }, [active])
+  }, [active, mode])
 
   if (!active) return null
+
+  const isBackground = mode === 'background'
 
   return (
     <div
       ref={hostRef}
-      className="absolute inset-0 z-0"
+      className={`absolute inset-0 ${isBackground ? 'pointer-events-none z-0' : 'z-0'}`}
       style={{
-        background: `radial-gradient(ellipse at 50% 48%, #0f1a28 0%, ${colors.bgDeep} 70%)`,
+        background: isBackground
+          ? 'transparent'
+          : `radial-gradient(ellipse at 50% 48%, #0f1a28 0%, ${colors.bgDeep} 70%)`,
         ...transformStyle,
+        opacity: isBackground ? opacity : transformStyle?.opacity ?? opacity,
+        filter: isBackground
+          ? `blur(${BG_BLUR_PX}px)`
+          : transformStyle?.filter,
         willChange: 'transform, filter, opacity',
       }}
     />

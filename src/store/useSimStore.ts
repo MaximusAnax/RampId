@@ -30,6 +30,9 @@ export const CLUSTER_METRICS: Metrics = {
   approvalsWaiting: 0,
 }
 
+export type TransitionDirection = 'in' | 'out'
+export type ScenarioPhase = 'idle' | 'playing' | 'resolved'
+
 interface SimStore {
   viewMode: ViewMode
   metrics: Metrics
@@ -44,6 +47,13 @@ interface SimStore {
   scenarioPaused: boolean
   useMorphFallback: boolean
   transitionProgress: number
+  transitionDirection: TransitionDirection
+  /** True after pull-back until return zoom completes — camera move, not reset */
+  pulledBack: boolean
+  /** Cluster metrics captured at pull-back so return zoom restores scenario state */
+  clusterMetricsSnapshot: Metrics | null
+  /** Pause background swarm ticker (modals / overlays) */
+  swarmPaused: boolean
 
   setViewMode: (mode: ViewMode) => void
   setTransitionProgress: (p: number) => void
@@ -51,7 +61,10 @@ interface SimStore {
   lerpMetricsToCluster: (t: number) => void
   startZoom: () => void
   completeZoom: () => void
+  startPullBack: () => void
+  completePullBack: () => void
   setUseMorphFallback: (v: boolean) => void
+  setSwarmPaused: (v: boolean) => void
 
   setOpportunity: (state: OpportunityState, label?: string) => void
   setScenarioStarted: (v: boolean) => void
@@ -65,6 +78,16 @@ interface SimStore {
   markFeedTyped: (id: string) => void
   applySimEvent: (event: SimEvent) => void
   setMetrics: (patch: Partial<Metrics>) => void
+}
+
+/** Gate pull-back / presentational UI off scenario lifecycle */
+export function getScenarioPhase(s: {
+  scenarioStarted: boolean
+  opportunity: OpportunityState
+}): ScenarioPhase {
+  if (!s.scenarioStarted) return 'idle'
+  if (s.opportunity === 'escalated') return 'resolved'
+  return 'playing'
 }
 
 function agentsMap(): Record<string, Agent> {
@@ -90,15 +113,22 @@ export const useSimStore = create<SimStore>((set, get) => ({
   scenarioPaused: false,
   useMorphFallback: false,
   transitionProgress: 0,
+  transitionDirection: 'in',
+  pulledBack: false,
+  clusterMetricsSnapshot: null,
+  swarmPaused: false,
 
   setViewMode: (mode) => set({ viewMode: mode }),
   setTransitionProgress: (p) => set({ transitionProgress: p }),
   setDisplayMetrics: (m) => set({ displayMetrics: m }),
   setUseMorphFallback: (v) => set({ useMorphFallback: v }),
+  setSwarmPaused: (v) => set({ swarmPaused: v }),
 
   lerpMetricsToCluster: (t) => {
+    const state = get()
     const s = SWARM_METRICS
-    const c = CLUSTER_METRICS
+    // When returning from pull-back, lerp toward the snapshotted cluster metrics
+    const c = state.clusterMetricsSnapshot ?? CLUSTER_METRICS
     set({
       displayMetrics: {
         activeAgents: lerp(s.activeAgents, c.activeAgents, t),
@@ -119,15 +149,46 @@ export const useSimStore = create<SimStore>((set, get) => ({
     set({
       viewMode: 'transitioning',
       transitionProgress: 0,
+      transitionDirection: 'in',
       // Opportunity stays hidden — revealed ~30s after cluster settle
     }),
 
-  completeZoom: () =>
+  completeZoom: () => {
+    const state = get()
+    // Return-from-pull-back restores snapshotted cluster metrics (incl. scenario patches).
+    // Fresh first zoom uses CLUSTER_METRICS. Agent/feed/opportunity state is never cleared here.
+    const restored = state.clusterMetricsSnapshot
     set({
       viewMode: 'cluster',
       transitionProgress: 1,
-      metrics: { ...CLUSTER_METRICS },
-      displayMetrics: { ...CLUSTER_METRICS },
+      transitionDirection: 'in',
+      pulledBack: false,
+      clusterMetricsSnapshot: null,
+      metrics: restored ? { ...restored } : { ...CLUSTER_METRICS },
+      displayMetrics: restored ? { ...restored } : { ...CLUSTER_METRICS },
+    })
+  },
+
+  startPullBack: () => {
+    const state = get()
+    set({
+      viewMode: 'transitioning',
+      transitionProgress: 1,
+      transitionDirection: 'out',
+      pulledBack: true,
+      clusterMetricsSnapshot: { ...state.displayMetrics },
+    })
+  },
+
+  completePullBack: () =>
+    set({
+      viewMode: 'swarm',
+      transitionProgress: 0,
+      transitionDirection: 'out',
+      pulledBack: true,
+      metrics: { ...SWARM_METRICS },
+      displayMetrics: { ...SWARM_METRICS },
+      // Intentionally keep agents, feed, opportunity, scenarioStarted intact
     }),
 
   setOpportunity: (state, label) =>

@@ -6,7 +6,7 @@ import { ZoomTransition, swarmZoomTransform } from './ZoomTransition'
 import { AgentGraph } from './AgentGraph'
 import { ActivityFeed } from './ActivityFeed'
 import { OpportunityCard } from './OpportunityCard'
-import { useSimStore } from '../store/useSimStore'
+import { getScenarioPhase, useSimStore } from '../store/useSimStore'
 import { getHeroScreenCenter } from '../data/swarmConfig'
 import { morphFallback, zoomDurationMs, fonts, colors } from '../styles/tokens'
 import { startAmbientFeed } from '../engine/eventEngine'
@@ -14,9 +14,16 @@ import { startAmbientFeed } from '../engine/eventEngine'
 export function OperationsCenter() {
   const viewMode = useSimStore((s) => s.viewMode)
   const transitionProgress = useSimStore((s) => s.transitionProgress)
+  const transitionDirection = useSimStore((s) => s.transitionDirection)
   const useMorphFallback = useSimStore((s) => s.useMorphFallback)
+  const pulledBack = useSimStore((s) => s.pulledBack)
+  const swarmPaused = useSimStore((s) => s.swarmPaused)
+  const scenarioStarted = useSimStore((s) => s.scenarioStarted)
+  const opportunity = useSimStore((s) => s.opportunity)
   const startZoom = useSimStore((s) => s.startZoom)
   const completeZoom = useSimStore((s) => s.completeZoom)
+  const startPullBack = useSimStore((s) => s.startPullBack)
+  const completePullBack = useSimStore((s) => s.completePullBack)
   const lerpMetricsToCluster = useSimStore((s) => s.lerpMetricsToCluster)
   const setTransitionProgress = useSimStore((s) => s.setTransitionProgress)
   const setUseMorphFallback = useSimStore((s) => s.setUseMorphFallback)
@@ -31,6 +38,7 @@ export function OperationsCenter() {
   const [clusterStagger, setClusterStagger] = useState(false)
   const [feedExpanded, setFeedExpanded] = useState(true)
   const rafRef = useRef<number>(0)
+  const hasEnteredClusterRef = useRef(false)
 
   useEffect(() => {
     setUseMorphFallback(morphFallback)
@@ -47,10 +55,13 @@ export function OperationsCenter() {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
-  // Ambient feed once in cluster; reset feed expanded on entry
+  // Ambient feed once in cluster; reset feed expanded only on first cluster entry
   useEffect(() => {
     if (viewMode !== 'cluster') return
-    setFeedExpanded(true)
+    if (!hasEnteredClusterRef.current) {
+      hasEnteredClusterRef.current = true
+      setFeedExpanded(true)
+    }
     return startAmbientFeed()
   }, [viewMode])
 
@@ -96,6 +107,8 @@ export function OperationsCenter() {
     setHeroOrigins(origins)
     setHeroCenter(getHeroScreenCenter(viewport.w, viewport.h))
     startZoom()
+    setCullNonHero(false)
+    setShowCluster(false)
 
     const start = performance.now()
     const duration = zoomDurationMs
@@ -133,17 +146,98 @@ export function OperationsCenter() {
     setTransitionProgress,
   ])
 
+  const runPullBack = useCallback(() => {
+    if (viewMode !== 'cluster') return
+    const phase = getScenarioPhase({ scenarioStarted, opportunity })
+    if (phase === 'playing') return
+
+    const origins = getHeroParticlePositions(viewport.w, viewport.h)
+    setHeroOrigins(origins)
+    setHeroCenter(getHeroScreenCenter(viewport.w, viewport.h))
+    startPullBack()
+    setCullNonHero(true)
+    setShowCluster(true)
+
+    const start = performance.now()
+    const duration = zoomDurationMs
+    const fallback = morphFallback
+
+    const tick = (now: number) => {
+      const elapsed = now - start
+      // progress goes 1 → 0 for reverse
+      const p = Math.max(0, 1 - elapsed / duration)
+      setTransitionProgress(p)
+      lerpMetricsToCluster(p)
+
+      if (p <= 0.55) {
+        setCullNonHero(false)
+      }
+      if (p <= 0.45) {
+        setShowCluster(false)
+        setClusterStagger(fallback)
+      }
+
+      if (p > 0) {
+        rafRef.current = requestAnimationFrame(tick)
+      } else {
+        completePullBack()
+        setShowCluster(false)
+        setCullNonHero(false)
+      }
+    }
+
+    rafRef.current = requestAnimationFrame(tick)
+  }, [
+    viewMode,
+    viewport,
+    scenarioStarted,
+    opportunity,
+    startPullBack,
+    completePullBack,
+    lerpMetricsToCluster,
+    setTransitionProgress,
+  ])
+
   useEffect(() => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
     }
   }, [])
 
-  const swarmActive = viewMode === 'swarm' || viewMode === 'transitioning'
+  const swarmActive =
+    viewMode === 'swarm' ||
+    (viewMode === 'transitioning' &&
+      (transitionDirection === 'in' || transitionDirection === 'out'))
+
   const swarmTransform =
     viewMode === 'transitioning'
-      ? swarmZoomTransform(transitionProgress, heroCenter, viewport)
+      ? swarmZoomTransform(
+          transitionProgress,
+          heroCenter,
+          viewport,
+          transitionDirection,
+        )
       : undefined
+
+  // Background ambient swarm in cluster; fade in during late inbound zoom / early outbound
+  const showBackgroundSwarm =
+    viewMode === 'cluster' ||
+    (viewMode === 'transitioning' &&
+      transitionDirection === 'in' &&
+      transitionProgress >= 0.55) ||
+    (viewMode === 'transitioning' && transitionDirection === 'out')
+
+  const backgroundOpacity = (() => {
+    if (viewMode === 'cluster') return 1
+    if (viewMode === 'transitioning' && transitionDirection === 'in') {
+      return Math.min(1, (transitionProgress - 0.55) / 0.35)
+    }
+    if (viewMode === 'transitioning' && transitionDirection === 'out') {
+      // Brighten toward foreground levels as we pull out — fade background as foreground takes over
+      return Math.min(1, transitionProgress / 0.45)
+    }
+    return 0
+  })()
 
   const graphOffset = {
     x: Math.max(40, (viewport.w - 900) / 2),
@@ -151,24 +245,56 @@ export function OperationsCenter() {
   }
 
   const inClusterLayout = viewMode === 'cluster'
-  const showGraph = showCluster || viewMode === 'cluster' || viewMode === 'transitioning'
+  const showGraph =
+    showCluster || viewMode === 'cluster' || viewMode === 'transitioning'
+
+  const scenarioPhase = getScenarioPhase({ scenarioStarted, opportunity })
+  const canPullBack =
+    viewMode === 'cluster' &&
+    (scenarioPhase === 'idle' || scenarioPhase === 'resolved')
+
+  const graphOpacity =
+    viewMode === 'transitioning' && transitionDirection === 'out'
+      ? Math.min(1, transitionProgress / 0.5)
+      : viewMode === 'transitioning' && transitionDirection === 'in'
+        ? transitionProgress >= 0.5
+          ? Math.min(1, (transitionProgress - 0.5) / 0.35)
+          : 0
+        : 1
 
   return (
     <div className="relative flex h-full w-full flex-col" style={{ background: colors.bgDeep }}>
       <StatusBar />
 
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        {/* Ambient periphery swarm — always under cluster UI */}
+        {showBackgroundSwarm && (
+          <SwarmField
+            mode="background"
+            active
+            paused={swarmPaused}
+            opacity={backgroundOpacity}
+          />
+        )}
+
         <AnimatePresence>
           {swarmActive && (
             <motion.div
               key="swarm"
               className="absolute inset-0 z-10"
+              initial={
+                transitionDirection === 'out' ? { opacity: 0 } : false
+              }
+              animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.3 }}
             >
               <SwarmField
+                mode="foreground"
                 active={swarmActive}
-                zoomProgress={transitionProgress}
+                zoomProgress={
+                  viewMode === 'transitioning' ? transitionProgress : 0
+                }
                 transformStyle={swarmTransform}
                 cullNonHero={cullNonHero}
                 onHeroCenter={setHeroCenter}
@@ -183,11 +309,16 @@ export function OperationsCenter() {
             heroOrigins={heroOrigins}
             useFallback={useMorphFallback}
             graphOffset={graphOffset}
+            direction={transitionDirection}
           />
         )}
 
         {viewMode === 'swarm' && (
-          <EnterPrompt onEnter={runZoom} heroCenter={heroCenter} />
+          <EnterPrompt
+            onEnter={runZoom}
+            heroCenter={heroCenter}
+            returnMode={pulledBack}
+          />
         )}
 
         {/* Cluster: graph pane + activity rail share real layout width */}
@@ -197,8 +328,9 @@ export function OperationsCenter() {
               inClusterLayout ? 'flex-row' : ''
             }`}
             style={{
-              // During transition, graph is full-bleed under morph; rail only in cluster
               pointerEvents: inClusterLayout ? 'auto' : 'none',
+              opacity: graphOpacity,
+              transition: 'opacity 0.15s linear',
             }}
           >
             <div className="relative min-h-0 min-w-0 flex-1">
@@ -208,6 +340,19 @@ export function OperationsCenter() {
                 fillParent
               />
               {inClusterLayout && <OpportunityCard />}
+
+              {canPullBack && (
+                <button
+                  type="button"
+                  onClick={runPullBack}
+                  className="absolute bottom-5 left-5 z-40 flex items-center gap-1.5 text-[10px] tracking-[0.18em] uppercase opacity-45 transition hover:opacity-90"
+                  style={{ fontFamily: fonts.mono, color: colors.textMuted }}
+                  aria-label="Pull back to org-wide swarm"
+                >
+                  <span aria-hidden>◂</span>
+                  Pull back
+                </button>
+              )}
             </div>
 
             {inClusterLayout && (
@@ -226,10 +371,16 @@ export function OperationsCenter() {
 function EnterPrompt({
   onEnter,
   heroCenter,
+  returnMode,
 }: {
   onEnter: () => void
   heroCenter: { x: number; y: number }
+  returnMode: boolean
 }) {
+  const label = returnMode ? '◂ RETURN TO VANTIX AI' : 'ENTER VANTIX AI'
+  const aria = returnMode ? 'Return to Vantix AI' : 'Enter Vantix AI'
+  const diveLabel = returnMode ? '◂ Return to cluster' : 'Dive into cluster →'
+
   return (
     <>
       <button
@@ -237,7 +388,7 @@ function EnterPrompt({
         onClick={onEnter}
         className="absolute z-40 -translate-x-1/2 -translate-y-1/2"
         style={{ left: heroCenter.x, top: heroCenter.y + 56 }}
-        aria-label="Enter Vantix AI"
+        aria-label={aria}
       >
         <motion.div
           animate={{ scale: [1, 1.15, 1], opacity: [0.7, 1, 0.7] }}
@@ -251,7 +402,7 @@ function EnterPrompt({
             boxShadow: '0 0 24px rgba(45, 212, 191, 0.25)',
           }}
         >
-          ENTER VANTIX AI
+          {label}
         </motion.div>
       </button>
 
@@ -261,7 +412,7 @@ function EnterPrompt({
         className="absolute bottom-6 right-6 z-40 text-[10px] tracking-[0.2em] uppercase opacity-40 transition hover:opacity-90"
         style={{ fontFamily: fonts.mono, color: colors.textMuted }}
       >
-        Dive into cluster →
+        {diveLabel}
       </button>
     </>
   )
