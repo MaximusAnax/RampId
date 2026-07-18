@@ -153,11 +153,11 @@ export function SwarmField({
 
           if (alpha < 0.02) continue
 
-          const radius = p.isHero ? 3.5 + zp * 6 : 2 + (alpha > 0.7 ? 1 : 0)
+          const radius = p.isHero ? 4.2 + zp * 6 : 2 + (alpha > 0.38 ? 0.5 : 0)
           const color = Number.parseInt(p.domainColor.replace('#', ''), 16)
 
-          dotsGfx.circle(p.x, p.y, radius * 2.2)
-          dotsGfx.fill({ color, alpha: alpha * 0.25 })
+          dotsGfx.circle(p.x, p.y, radius * (p.isHero ? 2.6 : 2.0))
+          dotsGfx.fill({ color, alpha: alpha * (p.isHero ? 0.35 : 0.2) })
           dotsGfx.circle(p.x, p.y, radius)
           dotsGfx.fill({ color, alpha })
         }
@@ -199,7 +199,7 @@ export function SwarmField({
       ref={hostRef}
       className="absolute inset-0 z-0"
       style={{
-        background: `radial-gradient(ellipse at 50% 48%, #0f1a28 0%, ${colors.bgDeep} 70%)`,
+      background: `radial-gradient(ellipse at 50% 48%, #0f1a28 0%, ${colors.bgDeep} 70%)`,
         ...transformStyle,
         willChange: 'transform, filter, opacity',
       }}

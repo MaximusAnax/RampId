@@ -34,6 +34,10 @@ export interface Agent {
   flash: 'green' | 'red' | 'amber' | null
   floatingDelta: number | null
   blockReason: string | null
+  /** Show NEW badge briefly after CreateAgentModal submit */
+  isNew?: boolean
+  requiredApprovals?: string | null
+  personalityBlurb?: string | null
 }
 
 export type RelationshipType =

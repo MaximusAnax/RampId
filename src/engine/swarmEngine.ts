@@ -93,10 +93,12 @@ export function updateLinks(
 }
 
 export function pulseBrightness(p: SwarmParticle, time: number): number {
-  const base = p.isHero ? 0.85 : 0.45
-  const shimmer = 0.15 + 0.15 * Math.sin(time * 0.003 + p.pulsePhase)
-  // Occasional brighter flash
+  // Heroes ~60–70% opacity; ambient ~30–40% (Section 12 swarm)
+  const base = p.isHero ? 0.62 : 0.34
+  const shimmer = p.isHero
+    ? 0.08 * Math.sin(time * 0.003 + p.pulsePhase)
+    : 0.06 * Math.sin(time * 0.003 + p.pulsePhase)
   const burst =
-    Math.sin(time * 0.001 + p.pulsePhase * 3) > 0.97 ? 0.35 : 0
-  return Math.min(1, base + shimmer + burst)
+    !p.isHero && Math.sin(time * 0.001 + p.pulsePhase * 3) > 0.97 ? 0.12 : 0
+  return Math.min(p.isHero ? 0.72 : 0.42, base + shimmer + burst)
 }

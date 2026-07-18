@@ -20,11 +20,9 @@ const edgeTypes = { relationship: RelationshipEdge }
 interface AgentGraphProps {
   visible: boolean
   staggerIn: boolean
-  /** When true, fill parent flex pane (graph area excludes activity rail) */
   fillParent?: boolean
 }
 
-/** Refits the viewport when the parent pane resizes (rail collapse/expand). */
 function FitViewOnPaneResize() {
   const { fitView } = useReactFlow()
 
@@ -44,16 +42,21 @@ function FitViewOnPaneResize() {
 function AgentGraphInner({ visible, staggerIn }: AgentGraphProps) {
   const agents = useSimStore((s) => s.agents)
   const relationships = useSimStore((s) => s.relationships)
+  const setSelectedAgentId = useSimStore((s) => s.setSelectedAgentId)
+  const { fitView } = useReactFlow()
+
+  const agentList = useMemo(() => Object.values(agents), [agents])
 
   const initialNodes: Node<AgentNodeData>[] = useMemo(
     () =>
-      Object.values(agents).map((agent) => ({
+      agentList.map((agent) => ({
         id: agent.id,
         type: 'agent',
         position: agent.position,
-        data: { agent },
+        data: { agent, onSelect: setSelectedAgentId },
         draggable: true,
       })),
+    // mount only — sync effect handles updates
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   )
@@ -61,15 +64,52 @@ function AgentGraphInner({ visible, staggerIn }: AgentGraphProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
 
+  // Sync agents into nodes (including newly created agents)
   useEffect(() => {
-    setNodes((prev) =>
-      prev.map((n) => ({
-        ...n,
-        data: { agent: agents[n.id] },
-        position: agents[n.id]?.position ?? n.position,
-      })),
-    )
-  }, [agents, setNodes])
+    setNodes((prev) => {
+      const prevIds = new Set(prev.map((n) => n.id))
+      const next = prev
+        .filter((n) => agents[n.id])
+        .map((n) => ({
+          ...n,
+          data: { agent: agents[n.id], onSelect: setSelectedAgentId },
+          position: agents[n.id]?.position ?? n.position,
+        }))
+
+      for (const agent of Object.values(agents)) {
+        if (!prevIds.has(agent.id)) {
+          next.push({
+            id: agent.id,
+            type: 'agent',
+            position: agent.position,
+            data: { agent, onSelect: setSelectedAgentId },
+            draggable: true,
+            style: { opacity: 0, transform: 'scale(0.85)' },
+          })
+        }
+      }
+      return next
+    })
+
+    // Fade in new nodes
+    requestAnimationFrame(() => {
+      setNodes((prev) =>
+        prev.map((n) =>
+          n.style?.opacity === 0
+            ? {
+                ...n,
+                style: {
+                  opacity: 1,
+                  transform: 'scale(1)',
+                  transition: 'opacity 0.35s ease, transform 0.35s ease',
+                },
+              }
+            : n,
+        ),
+      )
+      fitView({ padding: 0.25, duration: 280 })
+    })
+  }, [agents, setNodes, setSelectedAgentId, fitView])
 
   useEffect(() => {
     const next: Edge<RelationshipEdgeData>[] = relationships
@@ -101,16 +141,19 @@ function AgentGraphInner({ visible, staggerIn }: AgentGraphProps) {
       <ReactFlow
         nodes={nodes.map((n, i) => ({
           ...n,
-          style: staggerIn
-            ? {
-                opacity: 1,
-                transition: `opacity 0.35s ease ${i * 0.08}s, transform 0.35s ease ${i * 0.08}s`,
-              }
-            : undefined,
+          style: {
+            ...n.style,
+            ...(staggerIn
+              ? {
+                  transition: `opacity 0.35s ease ${i * 0.08}s, transform 0.35s ease ${i * 0.08}s`,
+                }
+              : {}),
+          },
         }))}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodeClick={(_, node) => setSelectedAgentId(node.id)}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView
