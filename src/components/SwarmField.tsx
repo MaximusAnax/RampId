@@ -13,6 +13,7 @@ import {
 } from '../engine/swarmEngine'
 import type { SwarmParticle } from '../engine/types'
 import { colors } from '../styles/tokens'
+import { useSimStore } from '../store/useSimStore'
 
 export type SwarmFieldMode = 'foreground' | 'background'
 
@@ -52,6 +53,8 @@ export function SwarmField({
   const pausedRef = useRef(paused)
   const modeRef = useRef(mode)
   const onHeroCenterRef = useRef(onHeroCenter)
+  const decisionFlashRef = useRef(0)
+  const decisionPulse = useSimStore((s) => s.decisionPulse)
 
   useEffect(() => {
     zoomRef.current = zoomProgress
@@ -72,6 +75,21 @@ export function SwarmField({
   useEffect(() => {
     onHeroCenterRef.current = onHeroCenter
   }, [onHeroCenter])
+
+  useEffect(() => {
+    if (decisionPulse <= 0 || mode !== 'foreground') return
+    decisionFlashRef.current = performance.now()
+    const particles = particlesRef.current
+    if (particles.length === 0) return
+    for (let n = 0; n < 4; n++) {
+      const p = particles[Math.floor(Math.random() * particles.length)]
+      if (p && !p.isHero) {
+        p.pulsePhase += Math.PI
+        p.vx += (Math.random() - 0.5) * 0.4
+        p.vy += (Math.random() - 0.5) * 0.4
+      }
+    }
+  }, [decisionPulse, mode])
 
   useEffect(() => {
     if (!active || !hostRef.current) return
@@ -152,6 +170,11 @@ export function SwarmField({
         const zp = zoomRef.current
         const cull = cullRef.current
         const bg = modeRef.current === 'background'
+        const flashAge = now - decisionFlashRef.current
+        const flashBoost =
+          !bg && flashAge >= 0 && flashAge < 420
+            ? (1 - flashAge / 420) * 0.35
+            : 0
 
         for (const p of particles) {
           if (!bg && cull && !p.isHero) continue
@@ -179,7 +202,7 @@ export function SwarmField({
             const b = particles[link.b]
             if (!a || !b) continue
             if (cull && (!a.isHero || !b.isHero)) continue
-            const alpha = (link.life / link.maxLife) * 0.25 * (1 - zp)
+            const alpha = (link.life / link.maxLife) * 0.28 * (1 - zp) + flashBoost * 0.15
             linksGfx.moveTo(a.x, a.y)
             linksGfx.lineTo(b.x, b.y)
             linksGfx.stroke({ width: 1, color: 0x2dd4bf, alpha })
@@ -200,6 +223,7 @@ export function SwarmField({
             if (!p.isHero) {
               alpha *= Math.max(0, 1 - zp * 1.4)
               alpha *= 1 - zp * 0.5
+              alpha = Math.min(0.85, alpha + flashBoost)
             } else {
               alpha = Math.min(1, alpha + zp * 0.3)
             }
@@ -211,7 +235,7 @@ export function SwarmField({
             ? 2.5
             : p.isHero
               ? 3.5 + zp * 6
-              : 2 + (alpha > 0.7 ? 1 : 0)
+              : 2 + (alpha > 0.7 ? 1.2 : 0) + flashBoost * 2
           const color = Number.parseInt(p.domainColor.replace('#', ''), 16)
 
           dotsGfx.circle(p.x, p.y, radius * (bg ? 3 : 2.2))

@@ -1,5 +1,6 @@
 import { initialAgents } from '../data/initialAgents'
 import { synapseFlowScenario } from './scenario_synapseflow'
+import { synapseFlowWhatIfScenario } from './scenario_synapseflow_whatif'
 import type {
   Agent,
   FeedItem,
@@ -35,12 +36,16 @@ function seedAgents(): Record<string, Agent> {
   )
 }
 
-/**
- * Pure replay of SynapseFlow events 0..index (inclusive).
- * No timers, no flashes — rebuilds cluster state for the timeline scrubber.
- */
-export function replaySynapseFlowToIndex(index: number): ReplaySnapshot {
+function replayEventsToIndex(
+  scenario: SimEvent[],
+  index: number,
+  opts?: { preserveNovaSpend?: number },
+): ReplaySnapshot {
   const agents = seedAgents()
+  if (opts?.preserveNovaSpend != null && agents.nova) {
+    agents.nova.spendingLimit = opts.preserveNovaSpend
+  }
+
   const relationships: Relationship[] = []
   const tasks: Task[] = []
   const feed: FeedItem[] = []
@@ -52,7 +57,7 @@ export function replaySynapseFlowToIndex(index: number): ReplaySnapshot {
     approvalsWaiting: 0,
   }
 
-  const capped = Math.max(-1, Math.min(index, synapseFlowScenario.length - 1))
+  const capped = Math.max(-1, Math.min(index, scenario.length - 1))
   if (capped < 0) {
     return {
       agents,
@@ -193,7 +198,7 @@ export function replaySynapseFlowToIndex(index: number): ReplaySnapshot {
   }
 
   for (let i = 0; i <= capped; i++) {
-    const event = synapseFlowScenario[i]
+    const event = scenario[i]
     const agentName =
       event.agentId === 'system'
         ? 'SYSTEM'
@@ -222,6 +227,22 @@ export function replaySynapseFlowToIndex(index: number): ReplaySnapshot {
   }
 }
 
+/**
+ * Pure replay of SynapseFlow events 0..index (inclusive).
+ * No timers, no flashes — rebuilds cluster state for the timeline scrubber.
+ */
+export function replaySynapseFlowToIndex(index: number): ReplaySnapshot {
+  return replayEventsToIndex(synapseFlowScenario, index)
+}
+
+/** Pure replay of the what-if alternate timeline 0..index (inclusive). */
+export function replayWhatIfToIndex(
+  index: number,
+  opts?: { preserveNovaSpend?: number },
+): ReplaySnapshot {
+  return replayEventsToIndex(synapseFlowWhatIfScenario, index, opts)
+}
+
 export const TIMELINE_TICKS = [
   { index: 1, label: 'Vendor Found', time: '10:14:02' },
   { index: 3, label: 'Agents Converge', time: '10:14:08' },
@@ -229,4 +250,13 @@ export const TIMELINE_TICKS = [
   { index: 7, label: 'Blocked', time: '10:14:16' },
   { index: 9, label: 'Trust Changes', time: '10:14:22' },
   { index: 11, label: 'Resolution', time: '10:14:28' },
+] as const
+
+export const WHATIF_TIMELINE_TICKS = [
+  { index: 1, label: 'Vendor Found', time: '10:14:02' },
+  { index: 3, label: 'Agents Converge', time: '10:14:08' },
+  { index: 4, label: 'Correlation Detected', time: '10:14:11' },
+  { index: 7, label: 'Nova Commits', time: '10:14:16' },
+  { index: 9, label: 'Too Late', time: '10:14:22' },
+  { index: 11, label: 'Exposure Open', time: '10:14:28' },
 ] as const

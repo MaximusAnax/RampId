@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { motion } from 'framer-motion'
 import {
   CLUSTER_METRICS,
@@ -16,33 +17,38 @@ function Metric({
   value,
   emphasize,
   subline,
+  trailing,
 }: {
   label: string
   value: string
   emphasize?: boolean
   subline?: string
+  trailing?: ReactNode
 }) {
   return (
-    <div className="flex min-w-0 flex-col gap-0.5 px-3 first:pl-0 lg:px-4">
+    <div className="flex min-w-0 flex-col gap-0.5 px-2.5 first:pl-0 lg:px-3.5">
       <span
         className="text-[10px] font-medium tracking-[0.18em] uppercase"
         style={{ color: 'var(--text-muted)', fontFamily: fonts.mono }}
       >
         {label}
       </span>
-      <motion.span
-        key={value}
-        initial={{ opacity: 0.4, y: 4 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.25 }}
-        className="text-lg font-semibold tabular-nums tracking-tight"
-        style={{
-          fontFamily: fonts.mono,
-          color: emphasize ? colors.cyan : 'var(--text-primary)',
-        }}
-      >
-        {value}
-      </motion.span>
+      <div className="flex items-center gap-1.5">
+        <motion.span
+          key={value}
+          initial={{ opacity: 0.4, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
+          className="text-lg font-semibold tabular-nums tracking-tight"
+          style={{
+            fontFamily: fonts.mono,
+            color: emphasize ? colors.cyan : 'var(--text-primary)',
+          }}
+        >
+          {value}
+        </motion.span>
+        {trailing}
+      </div>
       {subline && (
         <span
           className="text-[10px] tabular-nums tracking-wide"
@@ -74,7 +80,7 @@ export function StatusBar() {
 
   return (
     <header
-      className="relative z-50 flex items-center justify-between gap-4 border-b px-6 py-2.5"
+      className="relative z-50 flex items-center justify-between gap-4 border-b py-2.5 pl-6 pr-8"
       style={{
         background: 'rgba(10, 11, 15, 0.92)',
         borderColor: 'var(--border-subtle)',
@@ -164,7 +170,22 @@ export function StatusBar() {
             </>
           )}
           <Metric label="Money Under Mgmt" value={formatMoney(m.moneyUnderMgmt)} />
-          <Metric label="Org Trust" value={String(m.organizationalTrust)} emphasize />
+          <Metric
+            label="Org Trust"
+            value={String(m.organizationalTrust)}
+            emphasize
+            trailing={
+              m.blockedWorkflows > 0 ? (
+                <motion.span
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: [0, 1, 0.7], scale: 1 }}
+                  className="h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{ background: colors.red, boxShadow: `0 0 8px ${colors.red}` }}
+                  title="Blocked workflows affecting trust"
+                />
+              ) : undefined
+            }
+          />
         </div>
       </div>
     </header>

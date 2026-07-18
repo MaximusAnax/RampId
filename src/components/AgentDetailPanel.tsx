@@ -18,15 +18,23 @@ export function AgentDetailPanel() {
     // Prefer opening after story has progressed; still allow browse anytime in cluster
     true
 
-  const novaWhatIfReady =
+  const scenarioKind = useSimStore((s) => s.scenarioKind)
+  const whatIfPhase = useSimStore((s) => s.whatIfPhase)
+
+  // Part 5: emphasize what-if after main story resolves (or during/after what-if replay)
+  const enableNovaSlider =
     agent?.id === 'nova' &&
     scenarioStarted &&
-    (opportunity === 'escalated' || opportunity === 'investigating') &&
-    agent.spendingLimit <= 5000
+    (opportunity === 'escalated' ||
+      scenarioKind === 'whatif' ||
+      whatIfPhase === 'armed' ||
+      whatIfPhase === 'finished')
 
-  // Also allow what-if whenever nova is at post-block limit
-  const enableNovaSlider =
-    agent?.id === 'nova' && agent.spendingLimit > 0 && scenarioStarted
+  const novaWhatIfReady =
+    agent?.id === 'nova' &&
+    opportunity === 'escalated' &&
+    scenarioKind === 'main' &&
+    whatIfPhase !== 'playing'
 
   return (
     <AnimatePresence>
@@ -139,6 +147,7 @@ export function AgentDetailPanel() {
                 value={agent.spendingLimit}
                 max={agent.id === 'nova' ? WHAT_IF_NOVA_MAX : Math.max(agent.spendingLimit * 2, 50_000)}
                 onChange={(v) => setSpendingLimit(agent.id, v)}
+                disabled={whatIfPhase === 'playing'}
                 showWhatIfHint={enableNovaSlider || novaWhatIfReady}
               />
             )}

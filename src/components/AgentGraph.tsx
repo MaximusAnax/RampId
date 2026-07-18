@@ -112,20 +112,18 @@ function AgentGraphInner({ visible, staggerIn }: AgentGraphProps) {
   }, [agents, setNodes, setSelectedAgentId, fitView])
 
   useEffect(() => {
-    const next: Edge<RelationshipEdgeData>[] = relationships
-      .filter((r) => r.status !== 'severed')
-      .map((r) => ({
-        id: r.id,
-        source: r.sourceAgentId,
-        target: r.targetAgentId,
-        type: 'relationship',
-        animated: r.status === 'active' && r.type !== 'blocks',
-        data: {
-          relType: r.type,
-          status: r.status,
-          showX: r.showX,
-        },
-      }))
+    const next: Edge<RelationshipEdgeData>[] = relationships.map((r) => ({
+      id: r.id,
+      source: r.sourceAgentId,
+      target: r.targetAgentId,
+      type: 'relationship',
+      animated: r.status === 'active' && r.type !== 'blocks',
+      data: {
+        relType: r.type,
+        status: r.status,
+        showX: r.showX || r.status === 'severed' || r.type === 'blocks',
+      },
+    }))
     setEdges(next)
   }, [relationships, setEdges])
 

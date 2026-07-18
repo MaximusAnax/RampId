@@ -15,8 +15,13 @@ import { applyTrustUpdate } from '../engine/trustEngine'
 import {
   WHAT_IF_NOVA_THRESHOLD,
   WHAT_IF_CALLOUT,
+  WHAT_IF_OUTCOME_CALLOUT,
+  WHAT_IF_PLAYING_CALLOUT,
 } from '../styles/tokens'
-import { replaySynapseFlowToIndex } from '../engine/replayEngine'
+import {
+  replaySynapseFlowToIndex,
+  replayWhatIfToIndex,
+} from '../engine/replayEngine'
 
 export const SWARM_METRICS: Metrics = {
   activeAgents: 612,
@@ -38,6 +43,8 @@ export const CLUSTER_METRICS: Metrics = {
 
 export type TransitionDirection = 'in' | 'out'
 export type ScenarioPhase = 'idle' | 'playing' | 'resolved'
+export type ScenarioKind = 'main' | 'whatif'
+export type WhatIfPhase = 'armed' | 'playing' | 'finished' | null
 export interface CreateAgentInput {
   name: string
   role: string
@@ -76,8 +83,20 @@ interface SimStore {
   scenarioEventIndex: number
   createModalOpen: boolean
   demoEpoch: number
+  /** Full-screen cinematic beat: block stamp or trust pulse */
+  cinematicImpact: 'block' | 'trust' | null
+  cinematicEpoch: number
+  /** Cold-open / swarm: increments when a financial decision "lands" */
+  decisionPulse: number
+  scenarioKind: ScenarioKind
+  whatIfPhase: WhatIfPhase
 
   setViewMode: (mode: ViewMode) => void
+  setScenarioKind: (kind: ScenarioKind) => void
+  prepareWhatIfRerun: () => void
+  rerunWhatIfTimeline: () => void
+  triggerCinematic: (kind: 'block' | 'trust') => void
+  pulseDecision: () => void
   setTransitionProgress: (p: number) => void
   setDisplayMetrics: (m: Metrics) => void
   lerpMetricsToCluster: (t: number) => void
@@ -164,8 +183,27 @@ export const useSimStore = create<SimStore>((set, get) => ({
   scenarioEventIndex: -1,
   createModalOpen: false,
   demoEpoch: 0,
+  cinematicImpact: null,
+  cinematicEpoch: 0,
+  decisionPulse: 0,
+  scenarioKind: 'main',
+  whatIfPhase: null,
 
   setViewMode: (mode) => set({ viewMode: mode }),
+  setScenarioKind: (kind) => set({ scenarioKind: kind }),
+  pulseDecision: () => set((s) => ({ decisionPulse: s.decisionPulse + 1 })),
+  triggerCinematic: (kind) => {
+    set((s) => ({
+      cinematicImpact: kind,
+      cinematicEpoch: s.cinematicEpoch + 1,
+    }))
+    window.setTimeout(() => {
+      const cur = get()
+      if (cur.cinematicImpact === kind) {
+        set({ cinematicImpact: null })
+      }
+    }, kind === 'block' ? 1800 : 700)
+  },
   setTransitionProgress: (p) => set({ transitionProgress: p }),
   setDisplayMetrics: (m) => set({ displayMetrics: m }),
   setUseMorphFallback: (v) => set({ useMorphFallback: v }),
@@ -345,37 +383,60 @@ export const useSimStore = create<SimStore>((set, get) => ({
 
   applyNovaWhatIf: (amount) => {
     const crossed = amount >= WHAT_IF_NOVA_THRESHOLD
-    const wasActive = get().whatIfActive
+    const state = get()
+    // Do not arm/disarm mid what-if playback
+    if (state.whatIfPhase === 'playing') return
 
-    if (crossed && !wasActive) {
-      get().upsertRelationship({
-        id: 'nova-out',
-        type: 'provides_data_to',
-        sourceAgentId: 'nova',
-        targetAgentId: 'vega',
-        status: 'active',
-        reason: 'What-if: advanced without verification',
-        activeTaskId: null,
-      })
+    const phase = getScenarioPhase(state)
+    if (crossed && phase === 'resolved') {
       set({
         whatIfActive: true,
+        whatIfPhase: 'armed',
         whatIfCallout: WHAT_IF_CALLOUT,
       })
-    } else if (!crossed && wasActive) {
-      get().upsertRelationship({
-        id: 'nova-out',
-        type: 'provides_data_to',
-        sourceAgentId: 'nova',
-        targetAgentId: 'vega',
-        status: 'severed',
-        reason: 'Workflow severed',
-        activeTaskId: null,
-      })
+    } else if (!crossed) {
       set({
         whatIfActive: false,
+        whatIfPhase: null,
         whatIfCallout: null,
       })
     }
+  },
+
+  prepareWhatIfRerun: () => {
+    const novaSpend = get().agents.nova?.spendingLimit ?? WHAT_IF_NOVA_THRESHOLD
+    const agents = agentsMap()
+    if (agents.nova) {
+      agents.nova.spendingLimit = Math.max(novaSpend, WHAT_IF_NOVA_THRESHOLD)
+    }
+    set({
+      agents,
+      relationships: [],
+      tasks: [],
+      feed: [],
+      opportunity: 'investigating',
+      opportunityLabel:
+        'WHAT-IF · Nova authority raised — replaying SynapseFlow',
+      scenarioStarted: true,
+      scenarioPaused: false,
+      scenarioEventIndex: -1,
+      scenarioKind: 'whatif',
+      whatIfActive: true,
+      whatIfPhase: 'playing',
+      whatIfCallout: WHAT_IF_PLAYING_CALLOUT,
+      metrics: { ...CLUSTER_METRICS },
+      displayMetrics: { ...CLUSTER_METRICS },
+      selectedAgentId: null,
+      cinematicImpact: null,
+      viewMode: 'cluster',
+    })
+  },
+
+  rerunWhatIfTimeline: () => {
+    const state = get()
+    if (state.whatIfPhase !== 'armed' && state.whatIfPhase !== 'finished') return
+    if ((state.agents.nova?.spendingLimit ?? 0) < WHAT_IF_NOVA_THRESHOLD) return
+    // Playback is started by startWhatIfScenario (calls prepareWhatIfRerun)
   },
 
   createAgent: (input) => {
@@ -455,13 +516,27 @@ export const useSimStore = create<SimStore>((set, get) => ({
       whatIfActive: false,
       whatIfCallout: null,
       scenarioEventIndex: -1,
+      scenarioKind: 'main',
+      whatIfPhase: null,
       createModalOpen: false,
       demoEpoch: s.demoEpoch + 1,
+      cinematicImpact: null,
+      decisionPulse: 0,
     }))
   },
 
   scrubToEventIndex: (index) => {
-    const snapshot = replaySynapseFlowToIndex(index)
+    const kind = get().scenarioKind
+    const novaSpend = get().agents.nova?.spendingLimit
+    const snapshot =
+      kind === 'whatif'
+        ? replayWhatIfToIndex(index, {
+            preserveNovaSpend: Math.max(
+              novaSpend ?? WHAT_IF_NOVA_THRESHOLD,
+              WHAT_IF_NOVA_THRESHOLD,
+            ),
+          })
+        : replaySynapseFlowToIndex(index)
     set({
       agents: snapshot.agents,
       relationships: snapshot.relationships,
@@ -472,8 +547,19 @@ export const useSimStore = create<SimStore>((set, get) => ({
       scenarioPaused: true,
       scenarioStarted: true,
       scenarioEventIndex: index,
-      whatIfActive: false,
-      whatIfCallout: null,
+      whatIfActive: kind === 'whatif',
+      whatIfPhase:
+        kind === 'whatif'
+          ? snapshot.opportunity === 'escalated'
+            ? 'finished'
+            : 'playing'
+          : null,
+      whatIfCallout:
+        kind === 'whatif'
+          ? snapshot.opportunity === 'escalated'
+            ? WHAT_IF_OUTCOME_CALLOUT
+            : WHAT_IF_PLAYING_CALLOUT
+          : null,
       viewMode: 'cluster',
       metrics: { ...CLUSTER_METRICS, ...snapshot.metrics },
       displayMetrics: { ...CLUSTER_METRICS, ...snapshot.metrics },
@@ -517,6 +603,7 @@ export function applyEffect(
         blockReason: reasonParts.join(':'),
         status: 'blocked',
       })
+      if (!silent) get().triggerCinematic('block')
       break
     }
     case 'clear_block': {
@@ -594,7 +681,8 @@ export function applyEffect(
         floatingDelta: silent ? null : delta,
       })
       if (!silent) {
-        setTimeout(() => get().clearAgentFlash(id), 2200)
+        if (Math.abs(delta) >= 2) get().triggerCinematic('trust')
+        setTimeout(() => get().clearAgentFlash(id), 2800)
       }
       break
     }
@@ -609,6 +697,13 @@ export function applyEffect(
         state as OpportunityState,
         labelParts.join(':') || undefined,
       )
+      if (state === 'escalated' && get().scenarioKind === 'whatif') {
+        useSimStore.setState({
+          whatIfActive: true,
+          whatIfPhase: 'finished',
+          whatIfCallout: WHAT_IF_OUTCOME_CALLOUT,
+        })
+      }
       break
     }
     case 'metrics': {

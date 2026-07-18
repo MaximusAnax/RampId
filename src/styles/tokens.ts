@@ -67,3 +67,7 @@ export const WHAT_IF_NOVA_THRESHOLD = 10_000
 export const WHAT_IF_NOVA_MAX = 25_000
 export const WHAT_IF_CALLOUT =
   'Nova would have advanced the transaction before Sentinel could intervene.'
+export const WHAT_IF_OUTCOME_CALLOUT =
+  'Same vendor. One number. Nova committed $18,400 before Sentinel could stop it — that is the cost of over-autonomy.'
+export const WHAT_IF_PLAYING_CALLOUT =
+  'Playing alternate timeline — Nova authority $25,000…'
