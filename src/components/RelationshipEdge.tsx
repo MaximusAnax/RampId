@@ -5,7 +5,7 @@ import {
   getBezierPath,
   type EdgeProps,
 } from 'reactflow'
-import { relationshipColors } from '../styles/tokens'
+import { relationshipColors, colors } from '../styles/tokens'
 import type { RelationshipType } from '../engine/types'
 
 export type RelationshipEdgeData = {
@@ -32,12 +32,14 @@ function RelationshipEdgeComponent({
   const isBlocked = status === 'blocked' || relType === 'blocks'
   const isSevered = status === 'severed'
   const isDepends = relType === 'depends_on'
+  const isCoords = relType === 'coordinates_with'
+  const isProvides = relType === 'provides_data_to'
 
   const color = isBlocked
     ? relationshipColors.blocks
     : isSevered
-      ? '#64748b'
-      : relationshipColors[relType] ?? '#94a3b8'
+      ? colors.slate
+      : relationshipColors[relType] ?? colors.slate
 
   const [edgePath, labelX, labelY] = getBezierPath({
     sourceX,
@@ -52,6 +54,10 @@ function RelationshipEdgeComponent({
     return null
   }
 
+  let dash: string | undefined
+  if (isDepends && !isBlocked) dash = '6 4'
+  if (isCoords && !isBlocked) dash = '2 4'
+
   return (
     <>
       <BaseEdge
@@ -60,10 +66,10 @@ function RelationshipEdgeComponent({
         style={{
           ...style,
           stroke: color,
-          strokeWidth: isBlocked ? 2.5 : 1.5,
-          strokeDasharray: isDepends && !isBlocked ? '6 4' : undefined,
+          strokeWidth: isBlocked ? 2.5 : isProvides ? 1.25 : 1.5,
+          strokeDasharray: dash,
           opacity: 0.9,
-          filter: isBlocked ? 'drop-shadow(0 0 4px #ef4444)' : undefined,
+          filter: isBlocked ? `drop-shadow(0 0 4px ${colors.red})` : undefined,
         }}
       />
       <EdgeLabelRenderer>
@@ -77,9 +83,9 @@ function RelationshipEdgeComponent({
             <div
               className="flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold"
               style={{
-                background: '#ef4444',
+                background: colors.red,
                 color: '#fff',
-                boxShadow: '0 0 12px rgba(239,68,68,0.8)',
+                boxShadow: `0 0 12px ${colors.red}cc`,
               }}
             >
               ✕
@@ -89,7 +95,7 @@ function RelationshipEdgeComponent({
             <span
               className="rounded px-1.5 py-0.5 text-[9px] tracking-wide uppercase"
               style={{
-                background: 'rgba(7,11,18,0.85)',
+                background: 'rgba(10,11,15,0.9)',
                 color,
                 border: `1px solid ${color}44`,
               }}

@@ -2,17 +2,18 @@
 @import "tailwindcss";
 
 :root {
-  --bg-deep: #070b12;
+  --bg-deep: #0A0B0F;
   --bg-panel: #0d1520;
   --bg-elevated: #121c2a;
   --border-subtle: rgba(148, 163, 184, 0.12);
-  --text-primary: #e8eef6;
+  --text-primary: #E4E7EB;
   --text-muted: #8b9bb0;
-  --accent-cyan: #2dd4bf;
-  --accent-amber: #f59e0b;
-  --accent-red: #ef4444;
+  --accent-cyan: #4DD8FF;
+  --accent-amber: #FFB84D;
+  --accent-red: #FF4D5E;
   --accent-green: #22c55e;
-  --accent-blue: #38bdf8;
+  --accent-blue: #4DD8FF;
+  --accent-gold: #FFB84D;
 }
 
 * {
@@ -33,4 +34,8 @@ body,
 
 .react-flow__attribution {
   display: none !important;
+}
+
+input[type="range"] {
+  accent-color: var(--accent-cyan);
 }

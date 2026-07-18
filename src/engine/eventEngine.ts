@@ -20,20 +20,22 @@ export function startSynapseFlowScenario() {
 
   const store = useSimStore.getState()
   store.setScenarioStarted(true)
+  store.setScenarioPaused(false)
   store.setOpportunity('investigating')
 
-  // Skip sf-1 (opportunity already visible); start from atlas discovery
   const events = synapseFlowScenario.slice(1)
 
   let cumulative = 0
-  for (const event of events) {
+  events.forEach((event, i) => {
     cumulative += event.delayMs
     const delay = cumulative
+    const absoluteIndex = i + 1 // account for skipped sf-1
     const t = setTimeout(() => {
-      useSimStore.getState().applySimEvent(event)
+      if (useSimStore.getState().scenarioPaused) return
+      useSimStore.getState().applySimEvent(event, { index: absoluteIndex })
     }, delay)
     timers.push(t)
-  }
+  })
 }
 
 /** Ambient idle feed ticks while waiting in swarm/cluster before deploy */
