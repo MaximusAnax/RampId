@@ -1,4 +1,4 @@
-**Ramp Identity**
+**Veridian**
 
 **Interactive MVP & Demo Implementation Specification**
 
@@ -2204,7 +2204,7 @@ And finally:
 
 **Those organizations will need budgets, identities, reputations, permissions, relationships, and governance.**
 
-**Ramp Identity is a prototype of the control layer for that future.**
+**Veridian is a prototype of the control layer for that future.**
 
 **Not a dashboard for AI agents.**
 

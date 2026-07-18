@@ -21,6 +21,10 @@ export interface Agent {
   name: string
   role: string
   objective: string
+  /** Underlying model (e.g. Claude, GPT-4) — shows agent heterogeneity */
+  model: string
+  /** Who built/deployed the agent (e.g. Internal team, 3rd-party vendor) */
+  builtBy: string
   trustScore: number
   trustDimensions: TrustDimensions
   authorityLevel: AuthorityLevel

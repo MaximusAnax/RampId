@@ -1,4 +1,4 @@
-Ramp Identity
+Veridian
 
 Financial Identity Infrastructure for Autonomous AI Workers
 
@@ -57,7 +57,7 @@ A static permission system cannot adequately represent this.
 
 The proposed solution is:
 
-Ramp Identity: a dynamic financial identity and governance layer for autonomous AI workers.
+Veridian: a dynamic financial identity and governance layer for autonomous AI workers.
 
 Each AI agent has a financial identity that evolves based on demonstrated behavior.
 
@@ -357,9 +357,9 @@ Authority should be earned continuously.
 
 6. The Product Concept
 
-Ramp Identity
+Veridian
 
-Ramp Identity is a proposed dynamic financial identity and governance layer for autonomous AI workers.
+Veridian is a proposed dynamic financial identity and governance layer for autonomous AI workers.
 
 Each AI agent has a financial identity.
 

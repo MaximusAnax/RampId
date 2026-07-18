@@ -1,19 +1,21 @@
-# Ramp Identity — Demo Script
-### "Trust Is The Infrastructure"
+# **Ramp Identity — Demo Script**
+
+**"Trust Is The Infrastructure"**
+
 *Runtime: ~7 minutes | Format: Live product demo, no slides during the story*
 
----
 
-## Staging Notes
+
+**Staging Notes**
 
 - Before you speak, the Agent Operations Center is **already on screen, already running**. Agents mid-task, graph gently pulsing, activity feed scrolling. The room should be looking at a living thing before you say a word.
 - You are not narrating a feature tour. You are narrating a story that happens to be a product demo.
 - Speak slower than feels natural. Let silences land. The pauses are doing work.
 - Lines in *italics* are stage direction / screen action, not spoken.
 
----
 
-## PART 1 — Cold Open (0:00–0:45)
+
+**PART 1 — Cold Open (0:00–0:45)**
 
 *Lights up. Screen: Agent Operations Center, already live. Five agent nodes pulse gently — AURORA, VEGA, SENTINEL, ATLAS, NOVA. Activity ticker scrolling underneath: small tasks completing in real time. Say nothing for 3 full seconds. Let it run.*
 
@@ -37,9 +39,9 @@
 
 **How do you know which of your six hundred AI employees to trust with your money?"**
 
----
 
-## PART 2 — The Reframe (0:45–1:45)
+
+**PART 2 — The Reframe (0:45–1:45)**
 
 *Screen: pull back slightly. The five nodes, their trust scores visible — 95, 93, 88, 82, 76.*
 
@@ -71,33 +73,57 @@
 
 **That gap — that's not a compliance problem. That's the whole ballgame."**
 
----
 
-## PART 3 — The Reveal (1:45–2:15)
 
-*Screen: the org chart resolves into focus, cleaner, title card fades in beneath it: "RAMP IDENTITY"*
+**PART 3 — The Reveal (1:45–2:15)**
 
-**"So we built something different.**
+*Screen: pull back slightly. The five nodes, their trust scores visible — 95, 93, 88, 82, 76.*
 
-**Not a spending limit. Not a fraud filter. Not another dashboard.**
+**"Today, every company that gives an AI agent access to spend — a card, an API key, a budget — does it the same way we've always done permissions.**
 
-**A financial identity for every AI worker — one that isn't assigned once and forgotten.**
-
-**One that's earned. Continuously. By what the agent actually does.**
+**You give it a role. The role gives it access. The access is static.**
 
 *(beat)*
 
-**We call it Ramp Identity.**
+**And to be clear — some of the best teams in this space already see part of this. Ramp shipped a policy agent that now handles two-thirds of expense approvals on its own. They built an autonomy slider — teams decide exactly when it's trusted to act alone, and where it has to stop and ask. Deterministic guardrails underneath — dollar limits, vendor blocklists — so the LLM never gets to reason its way past a hard no.**
 
-**And the easiest way to explain it — is to just show you a Tuesday."**
+**That's genuinely well built. That's the right instinct.**
 
----
+*(beat, lean in slightly)*
 
-## PART 4 — The Live Story: SynapseFlow (2:15–5:30)
+**It's also exactly the size of the problem it solves: one agent, one workflow, one slider a human sets — once.**
+
+**Scale that. Not one agent approving expenses. Hundreds of agents — procurement, negotiation, governance, cost analysis — deciding things faster than any team could retune a slider for. Agents that depend on each other. Delegate to each other. Occasionally get shown the same misleading vendor at the same time.**
+
+**Nobody is hand-tuning six hundred sliders.**
+
+**And a slider can't tell you that an agent who was trustworthy on Tuesday just hit something it's never seen before.**
+
+*(beat)*
+
+**That's not a bigger version of the same problem. That's a different problem. That's an infrastructure problem.**
+
+*(beat)*
+
+**So we built something different.**
+
+**Not a smarter slider. Not another dashboard.**
+
+**A financial identity for every AI worker — one that isn't configured once and forgotten. One that's earned, continuously, by what the agent actually does — and that reasons about the whole organization of agents, not just one at a time.**
+
+**We call it Veridian.**
+
+**The easiest way to explain it — is to just show you a Tuesday."**
+
+
+
+
+
+**PART 4 — The Live Story: SynapseFlow (2:15–5:30)**
 
 *This is the emotional core. Run it like a scene, not a walkthrough.*
 
-### Beat 1 — The Opportunity (2:15–2:45)
+**Beat 1 — The Opportunity (2:15–2:45)**
 
 *Screen: a new node/alert appears — "SynapseFlow — 40% Lower Cost — $240,000 Potential Annual Savings"*
 
@@ -109,15 +135,15 @@
 
 *Click: "Deploy agents to investigate." The graph lights up — edges forming between ATLAS, NOVA, VEGA, SENTINEL.*
 
-### Beat 2 — The Organization Responds (2:45–3:30)
+**Beat 2 — The Organization Responds (2:45–3:30)**
 
 *Activity feed live-types:*
 
-```
-ATLAS     Found SynapseFlow vendor profile.
-NOVA      Estimated annual savings: $240,000.
-VEGA      Reviewing commercial terms.
-```
+**ATLAS     Found SynapseFlow vendor profile.**
+
+**NOVA      Estimated annual savings: $240,000.**
+
+**VEGA      Reviewing commercial terms.**
 
 **"Atlas — procurement. Nova — cost. Vega — negotiation. Nobody assigned this. They just picked it up, because it's in their domain, and it's the kind of decision they've earned the trust to touch."**
 
@@ -125,15 +151,15 @@ VEGA      Reviewing commercial terms.
 
 **"Watch these numbers. That's not a permission. That's a track record."**
 
-### Beat 3 — The Crack (3:30–4:15)
+**Beat 3 — The Crack (3:30–4:15)**
 
 *Feed continues:*
 
-```
-SENTINEL  Detected correlated agent activity.
-ATLAS     Requested vendor verification.
-NOVA      Attempted to proceed without verification.
-```
+**SENTINEL  Detected correlated agent activity.**
+
+**ATLAS     Requested vendor verification.**
+
+**NOVA      Attempted to proceed without verification.**
 
 **"And here — this is the moment.**
 
@@ -147,13 +173,11 @@ NOVA      Attempted to proceed without verification.
 
 **"This is the failure mode nobody talks about. Not one bad agent. Good agents, moving together, becoming a bad outcome nobody chose."**
 
-### Beat 4 — The Block (4:15–4:50)
+**Beat 4 — The Block (4:15–4:50)**
 
 *Feed:*
 
-```
-SENTINEL  BLOCKED NOVA.
-```
+**SENTINEL  BLOCKED NOVA.**
 
 *Nova's node visually locks — status flips red: "BLOCKED — Reason: Risk review incomplete." The edge to the next workflow step visibly severs.*
 
@@ -163,7 +187,7 @@ SENTINEL  BLOCKED NOVA.
 
 **Nova's workflow just stopped — mid-motion — because one agent's judgment changed another agent's authority."**
 
-### Beat 5 — The Reweighting (4:50–5:30)
+**Beat 5 — The Reweighting (4:50–5:30)**
 
 *Screen: NOVA's trust visibly ticks down — "76 → 68." VEGA's trust ticks up — "93 → 95." Authority numbers shift beside them.*
 
@@ -179,9 +203,9 @@ SENTINEL  BLOCKED NOVA.
 
 **"Two hundred forty thousand dollars in savings was on the table. The organization didn't say no to it. It said: not until we know it's real. And it figured out, on its own, who should be the one to find out."**
 
----
 
-## PART 5 — The Turn: "This Isn't a Recording" (5:30–6:15)
+
+**PART 5 — The Turn: "This Isn't a Recording" (5:30–6:15)**
 
 *Step slightly away from the screen. Tone shifts — conspiratorial, faster.*
 
@@ -203,9 +227,9 @@ SENTINEL  BLOCKED NOVA.
 
 **That's a company discovering, in real time, exactly how much autonomy is safe to give — and exactly where the line is before it's expensive to find out the hard way."**
 
----
 
-## PART 6 — The Close (6:15–7:00)
+
+**PART 6 — The Close (6:15–7:00)**
 
 *Screen pulls all the way back out. Full organization view. Metrics bar: ACTIVE AGENTS · TASKS IN PROGRESS · ORGANIZATIONAL TRUST 87.*
 
@@ -235,9 +259,9 @@ SENTINEL  BLOCKED NOVA.
 
 *Hold on the screen. Say nothing. Let the graph keep pulsing. Don't fill the silence.*
 
----
 
-## Delivery Checklist
+
+**Delivery Checklist**
 
 - [ ] Screen is live and animating **before** you say your first word — never open on a static shot.
 - [ ] Never say the word "dashboard." Ever.
@@ -246,8 +270,8 @@ SENTINEL  BLOCKED NOVA.
 - [ ] Do not explain the tagline. Say it once, and stop talking.
 - [ ] If asked in Q&A "is this real money," have one crisp line ready: *"Simulation engine end to end today — deliberately. The trust and governance logic underneath is what's real, and it's what would sit in front of Ramp's actual rails tomorrow."*
 
----
 
-## Optional Cuts If Time-Boxed to 4 Minutes
+
+**Optional Cuts If Time-Boxed to 4 Minutes**
 
 Cut Part 2 down to two lines ("static permissions vs. earned trust — that's the whole gap"), and cut Part 5's what-if entirely, replacing it with one spoken line at the very end of Part 4: *"And the wildest part — I can change any number on this screen right now and the story changes with it. Ask me to, after."* This banks the "it's alive" proof for Q&A instead of stage time.

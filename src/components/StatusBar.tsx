@@ -86,7 +86,7 @@ export function StatusBar() {
           className="text-2xl font-bold tracking-tight"
           style={{ fontFamily: fonts.display, color: 'var(--text-primary)' }}
         >
-          RAMP IDENTITY
+          VERIDIAN
         </h1>
         <span
           className="text-[10px] font-medium tracking-[0.2em] uppercase"
@@ -112,27 +112,6 @@ export function StatusBar() {
         </button>
       </div>
 
-      <div
-        className="flex shrink-0 items-center divide-x"
-        style={{ borderColor: 'var(--border-subtle)' }}
-      >
-        <Metric
-          label="Active Agents"
-          value={m.activeAgents.toLocaleString()}
-          emphasize
-          subline={
-            showOrgWide ? `+${ORG_WIDE_EXTRA.toLocaleString()} org-wide` : undefined
-          }
-        />
-        <Metric
-          label="Tasks In Progress"
-          value={m.tasksInProgress.toLocaleString()}
-        />
-        {showClusterExtras && (
-          <>
-            <Metric label="Blocked Workflows" value={String(m.blockedWorkflows)} />
-            <Metric label="Approvals Waiting" value={String(m.approvalsWaiting)} />
-          </>
       <div className="flex items-center gap-3">
         {viewMode === 'cluster' && (
           <button
@@ -170,6 +149,9 @@ export function StatusBar() {
             label="Active Agents"
             value={m.activeAgents.toLocaleString()}
             emphasize
+            subline={
+              showOrgWide ? `+${ORG_WIDE_EXTRA.toLocaleString()} org-wide` : undefined
+            }
           />
           <Metric
             label="Tasks In Progress"

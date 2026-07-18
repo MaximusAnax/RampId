@@ -386,6 +386,8 @@ export const useSimStore = create<SimStore>((set, get) => ({
       name: input.name.toUpperCase(),
       role: input.role,
       objective: input.objective,
+      model: 'Custom',
+      builtBy: 'Internal team',
       trustScore: 70,
       trustDimensions: {
         policyCompliance: 70,

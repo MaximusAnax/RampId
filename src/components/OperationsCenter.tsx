@@ -11,7 +11,6 @@ import { AgentDetailPanel } from './AgentDetailPanel'
 import { WhatIfPanel } from './WhatIfPanel'
 import { CreateAgentModal } from './CreateAgentModal'
 import { TimelineScrubber } from './TimelineScrubber'
-import { useSimStore } from '../store/useSimStore'
 import { getHeroScreenCenter } from '../data/swarmConfig'
 import { morphFallback, zoomDurationMs, fonts, colors } from '../styles/tokens'
 import { startAmbientFeed } from '../engine/eventEngine'
@@ -375,9 +374,9 @@ export function OperationsCenter() {
                   <span aria-hidden>◂</span>
                   Pull back
                 </button>
+              )}
               {inClusterLayout && (
                 <>
-                  <OpportunityCard />
                   <WhatIfPanel />
                   <TimelineScrubber />
                 </>

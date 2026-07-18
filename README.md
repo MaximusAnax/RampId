@@ -1,4 +1,4 @@
-# Vantix AI — Agent Operations Center
+# Veridian — Agent Operations Center
 
 Hackathon demo: ambient agent swarm → zoom into a 5-agent cluster → scripted SynapseFlow scenario.
 
@@ -19,4 +19,3 @@ Open the local URL (Vite will print it). Demo path:
 ## Stack
 
 React + TypeScript + Vite, Tailwind, Pixi.js (swarm), React Flow (cluster), Zustand, Framer Motion
-# RampId

@@ -74,6 +74,17 @@ export function AgentDetailPanel() {
               <p className="text-sm leading-snug">{agent.objective}</p>
             </div>
 
+            <div className="flex flex-col gap-1 text-sm">
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--text-muted)' }}>Model</span>
+                <span style={{ fontFamily: fonts.mono }}>{agent.model}</span>
+              </div>
+              <div className="flex justify-between">
+                <span style={{ color: 'var(--text-muted)' }}>Built by</span>
+                <span style={{ fontFamily: fonts.mono }}>{agent.builtBy}</span>
+              </div>
+            </div>
+
             <div className="flex items-center justify-between">
               <Label>Trust Score</Label>
               <span
