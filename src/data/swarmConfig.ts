@@ -2,8 +2,8 @@ import { domainColors, SWARM_BASE_COLOR } from '../styles/tokens'
 import type { SwarmParticle } from '../engine/types'
 import { HERO_AGENT_IDS } from './initialAgents'
 
-export const SWARM_PARTICLE_COUNT = 320
-export const BACKGROUND_PARTICLE_COUNT = 130
+export const SWARM_PARTICLE_COUNT = 420
+export const BACKGROUND_PARTICLE_COUNT = 160
 
 export const HERO_CLUSTER_CENTER = { x: 0.5, y: 0.48 }
 

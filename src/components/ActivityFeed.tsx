@@ -12,17 +12,20 @@ function TypingLine({
   message,
   timestamp,
   onDone,
+  emphasis,
 }: {
   id: string
   agentName: string
   message: string
   timestamp: string
   onDone: () => void
+  emphasis?: 'block' | 'trust' | null
 }) {
   const [shown, setShown] = useState('')
 
   useEffect(() => {
     let i = 0
+    const speed = emphasis === 'block' ? 10 : 16
     const interval = setInterval(() => {
       i++
       setShown(message.slice(0, i))
@@ -30,17 +33,24 @@ function TypingLine({
         clearInterval(interval)
         onDone()
       }
-    }, 18)
+    }, speed)
     return () => clearInterval(interval)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  const nameColor =
+    emphasis === 'block'
+      ? 'var(--accent-red)'
+      : emphasis === 'trust'
+        ? 'var(--accent-amber)'
+        : 'var(--accent-cyan)'
 
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between gap-2">
         <span
           className="shrink-0 text-[11px] font-semibold tracking-wider"
-          style={{ color: 'var(--accent-cyan)', fontFamily: fonts.mono }}
+          style={{ color: nameColor, fontFamily: fonts.mono }}
         >
           {agentName}
         </span>
@@ -51,12 +61,25 @@ function TypingLine({
           {timestamp}
         </span>
       </div>
-      <span className="text-[12px] leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+      <span
+        className="text-[12px] leading-relaxed"
+        style={{
+          color: emphasis === 'block' ? '#ffb4bb' : 'var(--text-primary)',
+          fontWeight: emphasis === 'block' ? 600 : 400,
+        }}
+      >
         {shown}
         <span className="animate-pulse opacity-60">▌</span>
       </span>
     </div>
   )
+}
+
+function feedEmphasis(message: string): 'block' | 'trust' | null {
+  const m = message.toUpperCase()
+  if (m.includes('BLOCKED')) return 'block'
+  if (m.includes('TRUST UPDATE')) return 'trust'
+  return null
 }
 
 interface ActivityFeedProps {
@@ -136,13 +159,23 @@ export function ActivityFeed({ expanded, onToggle }: ActivityFeedProps) {
 
         <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-y-auto">
           <AnimatePresence initial={false}>
-            {feed.map((item) => (
+            {feed.map((item) => {
+              const emphasis = feedEmphasis(item.message)
+              return (
               <motion.div
                 key={item.id}
                 initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="border-b px-3 py-2.5"
-                style={{ borderColor: 'var(--border-subtle)' }}
+                style={{
+                  borderColor: 'var(--border-subtle)',
+                  background:
+                    emphasis === 'block'
+                      ? 'rgba(255,77,94,0.08)'
+                      : emphasis === 'trust'
+                        ? 'rgba(255,184,77,0.06)'
+                        : undefined,
+                }}
               >
                 {!item.typed ? (
                   <TypingLine
@@ -151,13 +184,22 @@ export function ActivityFeed({ expanded, onToggle }: ActivityFeedProps) {
                     message={item.message}
                     timestamp={item.timestamp}
                     onDone={() => markFeedTyped(item.id)}
+                    emphasis={emphasis}
                   />
                 ) : (
                   <div className="flex flex-col gap-1">
                     <div className="flex items-baseline justify-between gap-2">
                       <span
                         className="shrink-0 text-[11px] font-semibold tracking-wider"
-                        style={{ color: 'var(--accent-cyan)', fontFamily: fonts.mono }}
+                        style={{
+                          color:
+                            emphasis === 'block'
+                              ? 'var(--accent-red)'
+                              : emphasis === 'trust'
+                                ? 'var(--accent-amber)'
+                                : 'var(--accent-cyan)',
+                          fontFamily: fonts.mono,
+                        }}
                       >
                         {item.agentName}
                       </span>
@@ -174,14 +216,18 @@ export function ActivityFeed({ expanded, onToggle }: ActivityFeedProps) {
                     </div>
                     <span
                       className="text-[12px] leading-relaxed"
-                      style={{ color: 'var(--text-primary)' }}
+                      style={{
+                        color: emphasis === 'block' ? '#ffb4bb' : 'var(--text-primary)',
+                        fontWeight: emphasis === 'block' ? 600 : 400,
+                      }}
                     >
                       {item.message}
                     </span>
                   </div>
                 )}
               </motion.div>
-            ))}
+              )
+            })}
           </AnimatePresence>
           {feed.length === 0 && (
             <p className="px-3 py-4 text-xs" style={{ color: 'var(--text-muted)' }}>

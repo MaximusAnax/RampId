@@ -39,3 +39,15 @@ body,
 input[type="range"] {
   accent-color: var(--accent-cyan);
 }
+
+@keyframes veridian-pulse-x {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(1.18);
+    filter: brightness(1.25);
+  }
+}

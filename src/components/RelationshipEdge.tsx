@@ -38,7 +38,7 @@ function RelationshipEdgeComponent({
   const color = isBlocked
     ? relationshipColors.blocks
     : isSevered
-      ? colors.slate
+      ? 'rgba(148, 163, 184, 0.35)'
       : relationshipColors[relType] ?? colors.slate
 
   const [edgePath, labelX, labelY] = getBezierPath({
@@ -50,13 +50,10 @@ function RelationshipEdgeComponent({
     targetPosition,
   })
 
-  if (isSevered) {
-    return null
-  }
-
   let dash: string | undefined
-  if (isDepends && !isBlocked) dash = '6 4'
-  if (isCoords && !isBlocked) dash = '2 4'
+  if (isSevered) dash = '3 8'
+  else if (isDepends && !isBlocked) dash = '6 4'
+  else if (isCoords && !isBlocked) dash = '2 4'
 
   return (
     <>
@@ -66,10 +63,14 @@ function RelationshipEdgeComponent({
         style={{
           ...style,
           stroke: color,
-          strokeWidth: isBlocked ? 2.5 : isProvides ? 1.25 : 1.5,
+          strokeWidth: isBlocked ? 3.5 : isSevered ? 1.25 : isProvides ? 1.25 : 1.5,
           strokeDasharray: dash,
-          opacity: 0.9,
-          filter: isBlocked ? `drop-shadow(0 0 4px ${colors.red})` : undefined,
+          opacity: isSevered ? 0.55 : 0.95,
+          filter: isBlocked
+            ? `drop-shadow(0 0 8px ${colors.red})`
+            : isSevered
+              ? undefined
+              : undefined,
         }}
       />
       <EdgeLabelRenderer>
@@ -79,19 +80,24 @@ function RelationshipEdgeComponent({
             transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
           }}
         >
-          {showX && isBlocked && (
+          {(showX && isBlocked) || isSevered ? (
             <div
-              className="flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold"
+              className="flex items-center justify-center rounded-full font-bold"
               style={{
-                background: colors.red,
+                width: isBlocked ? 28 : 20,
+                height: isBlocked ? 28 : 20,
+                fontSize: isBlocked ? 14 : 11,
+                background: isBlocked ? colors.red : 'rgba(148,163,184,0.35)',
                 color: '#fff',
-                boxShadow: `0 0 12px ${colors.red}cc`,
+                boxShadow: isBlocked
+                  ? `0 0 20px ${colors.red}, 0 0 40px ${colors.red}88`
+                  : 'none',
+                animation: isBlocked ? 'veridian-pulse-x 0.9s ease-in-out infinite' : undefined,
               }}
             >
               ✕
             </div>
-          )}
-          {!showX && (
+          ) : (
             <span
               className="rounded px-1.5 py-0.5 text-[9px] tracking-wide uppercase"
               style={{

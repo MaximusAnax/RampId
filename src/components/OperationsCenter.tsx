@@ -11,9 +11,18 @@ import { AgentDetailPanel } from './AgentDetailPanel'
 import { WhatIfPanel } from './WhatIfPanel'
 import { CreateAgentModal } from './CreateAgentModal'
 import { TimelineScrubber } from './TimelineScrubber'
+import { CinematicImpact } from './CinematicImpact'
+import { DecisionTicker } from './DecisionTicker'
+import { CloseTagline } from './CloseTagline'
+import { PresenterHotkeys } from './PresenterHotkeys'
 import { getHeroScreenCenter } from '../data/swarmConfig'
 import { morphFallback, zoomDurationMs, fonts, colors } from '../styles/tokens'
 import { startAmbientFeed } from '../engine/eventEngine'
+
+const OPPORTUNITY_LABEL =
+  'SynapseFlow — 40% Lower Cost — $240,000 Potential Annual Savings'
+/** Presenter has Parts 1–3 (~2 min spoken); reveal earlier so Part 4 is ready */
+const OPPORTUNITY_REVEAL_MS = 12_000
 
 export function OperationsCenter() {
   const viewMode = useSimStore((s) => s.viewMode)
@@ -33,6 +42,7 @@ export function OperationsCenter() {
   const setUseMorphFallback = useSimStore((s) => s.setUseMorphFallback)
   const demoEpoch = useSimStore((s) => s.demoEpoch)
   const selectedAgentId = useSimStore((s) => s.selectedAgentId)
+  const cinematicImpact = useSimStore((s) => s.cinematicImpact)
 
   const [heroCenter, setHeroCenter] = useState({ x: 0, y: 0 })
   const [heroOrigins, setHeroOrigins] = useState<
@@ -93,19 +103,15 @@ export function OperationsCenter() {
     const timer = window.setTimeout(() => {
       const s = useSimStore.getState()
       if (s.opportunity !== 'hidden' || s.scenarioStarted) return
-      s.setOpportunity(
-        'ready',
-        'SynapseFlow — 40% Lower Cost — $240,000 Potential Annual Savings',
-      )
+      s.setOpportunity('ready', OPPORTUNITY_LABEL)
       s.pushFeed({
         id: 'feed-sf-1',
         agentId: 'system',
         agentName: 'SYSTEM',
-        message:
-          'SynapseFlow — 40% Lower Cost — $240,000 Potential Annual Savings',
+        message: OPPORTUNITY_LABEL,
         timestamp: '10:14:00',
       })
-    }, 30_000)
+    }, OPPORTUNITY_REVEAL_MS)
 
     return () => window.clearTimeout(timer)
   }, [viewMode, demoEpoch])
@@ -282,11 +288,18 @@ export function OperationsCenter() {
   const detailOpen = !!selectedAgentId && inClusterLayout
 
   return (
-    <div
+    <motion.div
       className="relative flex h-full w-full flex-col"
       style={{ background: colors.bgDeep }}
+      animate={
+        cinematicImpact === 'block'
+          ? { x: [0, -6, 6, -4, 4, -2, 0] }
+          : { x: 0 }
+      }
+      transition={{ duration: 0.45 }}
     >
       <StatusBar />
+      <PresenterHotkeys onEnter={runZoom} onPullBack={runPullBack} />
 
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
         {/* Ambient periphery swarm — always under cluster UI */}
@@ -343,6 +356,9 @@ export function OperationsCenter() {
           />
         )}
 
+        <DecisionTicker />
+        <CloseTagline />
+
         {showGraph && (
           <div
             className={`relative z-20 flex min-h-0 min-w-0 flex-1 ${
@@ -395,8 +411,9 @@ export function OperationsCenter() {
         )}
 
         {inClusterLayout && <CreateAgentModal />}
+        <CinematicImpact />
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -425,13 +442,13 @@ function EnterPrompt({
         <motion.div
           animate={{ scale: [1, 1.15, 1], opacity: [0.7, 1, 0.7] }}
           transition={{ duration: 2.2, repeat: Infinity }}
-          className="rounded-full border px-4 py-2 text-[11px] font-semibold tracking-[0.25em]"
+          className="rounded-full border px-5 py-2.5 text-[12px] font-semibold tracking-[0.28em]"
           style={{
             fontFamily: fonts.mono,
             color: colors.cyan,
-            borderColor: 'rgba(77, 216, 255, 0.45)',
-            background: 'rgba(10, 11, 15, 0.75)',
-            boxShadow: '0 0 24px rgba(77, 216, 255, 0.25)',
+            borderColor: 'rgba(77, 216, 255, 0.55)',
+            background: 'rgba(10, 11, 15, 0.8)',
+            boxShadow: '0 0 32px rgba(77, 216, 255, 0.35)',
           }}
         >
           {label}

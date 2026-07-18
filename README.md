@@ -2,6 +2,8 @@
 
 Hackathon demo: ambient agent swarm → zoom into a 5-agent cluster → scripted SynapseFlow scenario.
 
+For full feature inventory, architecture, and file pointers for new agents, see **[PROJECT_STATE.md](PROJECT_STATE.md)**. Spoken pitch: **[demo_script.md](demo_script.md)**.
+
 ## Run
 
 ```bash
