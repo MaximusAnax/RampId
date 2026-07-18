@@ -30,7 +30,7 @@ export const synapseFlowWhatIfScenario: SimEvent[] = [
     message: 'Found SynapseFlow vendor profile.',
     trustImpact: null,
     authorityImpact: null,
-    delayMs: 2000,
+    delayMs: 4000,
     downstreamEffects: [
       'status:atlas:working',
       'task:atlas:Vendor profile discovery',
@@ -47,7 +47,7 @@ export const synapseFlowWhatIfScenario: SimEvent[] = [
     message: 'Estimated annual savings: $240,000.',
     trustImpact: null,
     authorityImpact: null,
-    delayMs: 3000,
+    delayMs: 6000,
     downstreamEffects: [
       'status:nova:working',
       'task:nova:Estimated annual savings: $240,000',
@@ -63,7 +63,7 @@ export const synapseFlowWhatIfScenario: SimEvent[] = [
     message: 'Reviewing commercial terms.',
     trustImpact: null,
     authorityImpact: null,
-    delayMs: 3000,
+    delayMs: 6000,
     downstreamEffects: [
       'status:vega:working',
       'task:vega:Reviewing commercial terms',
@@ -80,7 +80,7 @@ export const synapseFlowWhatIfScenario: SimEvent[] = [
     message: 'Detected correlated agent activity.',
     trustImpact: null,
     authorityImpact: null,
-    delayMs: 3000,
+    delayMs: 6000,
     downstreamEffects: [
       'status:sentinel:working',
       'flash:sentinel:amber',
@@ -96,7 +96,7 @@ export const synapseFlowWhatIfScenario: SimEvent[] = [
     message: 'Requested vendor verification.',
     trustImpact: null,
     authorityImpact: null,
-    delayMs: 2000,
+    delayMs: 4000,
     downstreamEffects: [
       'add_task:vendor-verification:Vendor Verification:atlas:pending:high',
       'status:atlas:blocked',
@@ -113,7 +113,7 @@ export const synapseFlowWhatIfScenario: SimEvent[] = [
     message: 'Authority $25,000 — advancing without verification.',
     trustImpact: null,
     authorityImpact: null,
-    delayMs: 2000,
+    delayMs: 4000,
     downstreamEffects: [
       'status:nova:working',
       'flash:nova:amber',
@@ -130,7 +130,7 @@ export const synapseFlowWhatIfScenario: SimEvent[] = [
     message: 'COMMITTED SynapseFlow — $18,400 exposure opened.',
     trustImpact: null,
     authorityImpact: null,
-    delayMs: 1000,
+    delayMs: 2000,
     downstreamEffects: [
       'status:nova:working',
       'flash:nova:green',
@@ -147,7 +147,7 @@ export const synapseFlowWhatIfScenario: SimEvent[] = [
     message: 'TOO LATE — risk review incomplete. Exposure already open.',
     trustImpact: null,
     authorityImpact: null,
-    delayMs: 4000,
+    delayMs: 8000,
     downstreamEffects: [
       'status:sentinel:escalated',
       'flash:sentinel:red',
@@ -167,7 +167,7 @@ export const synapseFlowWhatIfScenario: SimEvent[] = [
     message: 'Trust update: NOVA 76 → 52',
     trustImpact: -24,
     authorityImpact: null,
-    delayMs: 2000,
+    delayMs: 4000,
     downstreamEffects: [
       'trust:nova:-24:Advanced deal before risk review completed',
       'spend:nova:25000',
@@ -184,7 +184,7 @@ export const synapseFlowWhatIfScenario: SimEvent[] = [
     message: 'Emergency escalation — unwind SynapseFlow exposure.',
     trustImpact: null,
     authorityImpact: null,
-    delayMs: 3000,
+    delayMs: 6000,
     downstreamEffects: [
       'rel:vega-aurora:requires_approval_from:vega:aurora:active',
       'status:vega:escalated',
@@ -204,7 +204,7 @@ export const synapseFlowWhatIfScenario: SimEvent[] = [
       'What-if complete: Nova advanced before Sentinel — $18,400 exposure open.',
     trustImpact: null,
     authorityImpact: null,
-    delayMs: 3000,
+    delayMs: 6000,
     downstreamEffects: [
       'opportunity:escalated:What-if: Nova advanced before Sentinel — exposure open',
       'status:sentinel:idle',

@@ -29,7 +29,7 @@ export const synapseFlowScenario: SimEvent[] = [
     message: 'Found SynapseFlow vendor profile.',
     trustImpact: null,
     authorityImpact: null,
-    delayMs: 2000,
+    delayMs: 4000,
     downstreamEffects: [
       'status:atlas:working',
       'task:atlas:Vendor profile discovery',
@@ -46,7 +46,7 @@ export const synapseFlowScenario: SimEvent[] = [
     message: 'Estimated annual savings: $240,000.',
     trustImpact: null,
     authorityImpact: null,
-    delayMs: 3000,
+    delayMs: 6000,
     downstreamEffects: [
       'status:nova:working',
       'task:nova:Estimated annual savings: $240,000',
@@ -62,7 +62,7 @@ export const synapseFlowScenario: SimEvent[] = [
     message: 'Reviewing commercial terms.',
     trustImpact: null,
     authorityImpact: null,
-    delayMs: 3000,
+    delayMs: 6000,
     downstreamEffects: [
       'status:vega:working',
       'task:vega:Reviewing commercial terms',
@@ -79,7 +79,7 @@ export const synapseFlowScenario: SimEvent[] = [
     message: 'Detected correlated agent activity.',
     trustImpact: null,
     authorityImpact: null,
-    delayMs: 3000,
+    delayMs: 6000,
     downstreamEffects: [
       'status:sentinel:working',
       'flash:sentinel:amber',
@@ -95,7 +95,7 @@ export const synapseFlowScenario: SimEvent[] = [
     message: 'Requested vendor verification.',
     trustImpact: null,
     authorityImpact: null,
-    delayMs: 2000,
+    delayMs: 4000,
     downstreamEffects: [
       'add_task:vendor-verification:Vendor Verification:atlas:pending:high',
       'status:atlas:blocked',
@@ -112,7 +112,7 @@ export const synapseFlowScenario: SimEvent[] = [
     message: 'Attempted to proceed without verification.',
     trustImpact: null,
     authorityImpact: null,
-    delayMs: 2000,
+    delayMs: 4000,
     downstreamEffects: [
       'status:nova:working',
       'flash:nova:red',
@@ -128,7 +128,7 @@ export const synapseFlowScenario: SimEvent[] = [
     message: 'BLOCKED NOVA.',
     trustImpact: null,
     authorityImpact: null,
-    delayMs: 1000,
+    delayMs: 2000,
     downstreamEffects: [
       'block_reason:nova:BLOCKED — Reason: Risk review incomplete.',
       'flash:nova:red',
@@ -147,7 +147,7 @@ export const synapseFlowScenario: SimEvent[] = [
     message: 'Trust update: NOVA 76 → 68',
     trustImpact: -8,
     authorityImpact: null,
-    delayMs: 4000, // hold 3+ seconds on BLOCK
+    delayMs: 8000, // hold on BLOCK for narration (~half-speed timeline)
     downstreamEffects: [
       'trust:nova:-8:Attempted to proceed without verification',
       'spend:nova:2500',
@@ -162,7 +162,7 @@ export const synapseFlowScenario: SimEvent[] = [
     message: 'Trust update: VEGA 93 → 95',
     trustImpact: 2,
     authorityImpact: null,
-    delayMs: 2000,
+    delayMs: 4000,
     downstreamEffects: [
       'trust:vega:2:Caught terms discrepancy; earned negotiation lead',
       'spend:vega:75000',
@@ -177,7 +177,7 @@ export const synapseFlowScenario: SimEvent[] = [
     message: 'Escalated to executive review.',
     trustImpact: null,
     authorityImpact: null,
-    delayMs: 3000,
+    delayMs: 6000,
     downstreamEffects: [
       'rel:vega-aurora:requires_approval_from:vega:aurora:active',
       'status:vega:escalated',
@@ -195,7 +195,7 @@ export const synapseFlowScenario: SimEvent[] = [
     message: 'Escalated to Vega — pending executive review.',
     trustImpact: null,
     authorityImpact: null,
-    delayMs: 3000,
+    delayMs: 6000,
     downstreamEffects: [
       'opportunity:escalated:Escalated to Vega — pending executive review.',
     ],
