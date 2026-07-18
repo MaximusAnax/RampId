@@ -7,6 +7,11 @@ import { AgentGraph } from './AgentGraph'
 import { ActivityFeed } from './ActivityFeed'
 import { OpportunityCard } from './OpportunityCard'
 import { getScenarioPhase, useSimStore } from '../store/useSimStore'
+import { AgentDetailPanel } from './AgentDetailPanel'
+import { WhatIfPanel } from './WhatIfPanel'
+import { CreateAgentModal } from './CreateAgentModal'
+import { TimelineScrubber } from './TimelineScrubber'
+import { useSimStore } from '../store/useSimStore'
 import { getHeroScreenCenter } from '../data/swarmConfig'
 import { morphFallback, zoomDurationMs, fonts, colors } from '../styles/tokens'
 import { startAmbientFeed } from '../engine/eventEngine'
@@ -27,12 +32,17 @@ export function OperationsCenter() {
   const lerpMetricsToCluster = useSimStore((s) => s.lerpMetricsToCluster)
   const setTransitionProgress = useSimStore((s) => s.setTransitionProgress)
   const setUseMorphFallback = useSimStore((s) => s.setUseMorphFallback)
+  const demoEpoch = useSimStore((s) => s.demoEpoch)
+  const selectedAgentId = useSimStore((s) => s.selectedAgentId)
 
   const [heroCenter, setHeroCenter] = useState({ x: 0, y: 0 })
   const [heroOrigins, setHeroOrigins] = useState<
     { id: string; x: number; y: number }[]
   >([])
-  const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight })
+  const [viewport, setViewport] = useState({
+    w: typeof window !== 'undefined' ? window.innerWidth : 1440,
+    h: typeof window !== 'undefined' ? window.innerHeight : 900,
+  })
   const [cullNonHero, setCullNonHero] = useState(false)
   const [showCluster, setShowCluster] = useState(false)
   const [clusterStagger, setClusterStagger] = useState(false)
@@ -43,6 +53,17 @@ export function OperationsCenter() {
   useEffect(() => {
     setUseMorphFallback(morphFallback)
   }, [setUseMorphFallback])
+
+  // Full remount of local UI state when Reset Demo bumps demoEpoch
+  useEffect(() => {
+    setCullNonHero(false)
+    setShowCluster(false)
+    setClusterStagger(false)
+    setFeedExpanded(true)
+    if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    setHeroCenter(getHeroScreenCenter(window.innerWidth, window.innerHeight))
+    setHeroOrigins(getHeroParticlePositions(window.innerWidth, window.innerHeight))
+  }, [demoEpoch])
 
   useEffect(() => {
     const onResize = () =>
@@ -63,9 +84,8 @@ export function OperationsCenter() {
       setFeedExpanded(true)
     }
     return startAmbientFeed()
-  }, [viewMode])
+  }, [viewMode, demoEpoch])
 
-  // SynapseFlow opportunity appears ~30s after entering cluster (not on zoom)
   useEffect(() => {
     if (viewMode !== 'cluster') return
     const store = useSimStore.getState()
@@ -89,16 +109,15 @@ export function OperationsCenter() {
     }, 30_000)
 
     return () => window.clearTimeout(timer)
-  }, [viewMode])
+  }, [viewMode, demoEpoch])
 
-  // Notify React Flow to remeasure after rail toggle animation
   useEffect(() => {
     if (viewMode !== 'cluster') return
     const t = window.setTimeout(() => {
       window.dispatchEvent(new Event('resize'))
     }, 300)
     return () => window.clearTimeout(t)
-  }, [feedExpanded, viewMode])
+  }, [feedExpanded, viewMode, selectedAgentId])
 
   const runZoom = useCallback(() => {
     if (viewMode !== 'swarm') return
@@ -261,9 +280,13 @@ export function OperationsCenter() {
           ? Math.min(1, (transitionProgress - 0.5) / 0.35)
           : 0
         : 1
+  const detailOpen = !!selectedAgentId && inClusterLayout
 
   return (
-    <div className="relative flex h-full w-full flex-col" style={{ background: colors.bgDeep }}>
+    <div
+      className="relative flex h-full w-full flex-col"
+      style={{ background: colors.bgDeep }}
+    >
       <StatusBar />
 
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
@@ -280,7 +303,7 @@ export function OperationsCenter() {
         <AnimatePresence>
           {swarmActive && (
             <motion.div
-              key="swarm"
+              key={`swarm-${demoEpoch}`}
               className="absolute inset-0 z-10"
               initial={
                 transitionDirection === 'out' ? { opacity: 0 } : false
@@ -321,7 +344,6 @@ export function OperationsCenter() {
           />
         )}
 
-        {/* Cluster: graph pane + activity rail share real layout width */}
         {showGraph && (
           <div
             className={`relative z-20 flex min-h-0 min-w-0 flex-1 ${
@@ -335,6 +357,7 @@ export function OperationsCenter() {
           >
             <div className="relative min-h-0 min-w-0 flex-1">
               <AgentGraph
+                key={`graph-${demoEpoch}`}
                 visible
                 staggerIn={clusterStagger || useMorphFallback}
                 fillParent
@@ -352,17 +375,27 @@ export function OperationsCenter() {
                   <span aria-hidden>◂</span>
                   Pull back
                 </button>
+              {inClusterLayout && (
+                <>
+                  <OpportunityCard />
+                  <WhatIfPanel />
+                  <TimelineScrubber />
+                </>
               )}
             </div>
 
-            {inClusterLayout && (
+            {inClusterLayout && !detailOpen && (
               <ActivityFeed
                 expanded={feedExpanded}
                 onToggle={() => setFeedExpanded((v) => !v)}
               />
             )}
+
+            {inClusterLayout && <AgentDetailPanel />}
           </div>
         )}
+
+        {inClusterLayout && <CreateAgentModal />}
       </div>
     </div>
   )
@@ -397,9 +430,9 @@ function EnterPrompt({
           style={{
             fontFamily: fonts.mono,
             color: colors.cyan,
-            borderColor: 'rgba(45, 212, 191, 0.45)',
-            background: 'rgba(7, 11, 18, 0.75)',
-            boxShadow: '0 0 24px rgba(45, 212, 191, 0.25)',
+            borderColor: 'rgba(77, 216, 255, 0.45)',
+            background: 'rgba(10, 11, 15, 0.75)',
+            boxShadow: '0 0 24px rgba(77, 216, 255, 0.25)',
           }}
         >
           {label}

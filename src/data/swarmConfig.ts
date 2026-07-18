@@ -1,4 +1,4 @@
-import { domainColors } from '../styles/tokens'
+import { domainColors, SWARM_BASE_COLOR } from '../styles/tokens'
 import type { SwarmParticle } from '../engine/types'
 import { HERO_AGENT_IDS } from './initialAgents'
 
@@ -40,7 +40,7 @@ export function createSwarmParticles(
       y: cy + offset.y * height + rand(-8, 8),
       vx: rand(-0.15, 0.15),
       vy: rand(-0.15, 0.15),
-      domainColor: domainColors[0],
+      domainColor: SWARM_BASE_COLOR,
       pulsePhase: rand(0, Math.PI * 2),
       isHero: true,
       heroAgentId: agentId,
@@ -55,6 +55,7 @@ export function createSwarmParticles(
       y: rand(0, height),
       vx: rand(-0.35, 0.35),
       vy: rand(-0.35, 0.35),
+      // Subtle domain tint within cyan family — not rainbow
       domainColor: domainColors[i % domainColors.length],
       pulsePhase: rand(0, Math.PI * 2),
       isHero: false,

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { initialAgents } from '../data/initialAgents'
 import type {
   Agent,
+  AuthorityLevel,
   FeedItem,
   Metrics,
   OpportunityState,
@@ -11,6 +12,11 @@ import type {
   ViewMode,
 } from '../engine/types'
 import { applyTrustUpdate } from '../engine/trustEngine'
+import {
+  WHAT_IF_NOVA_THRESHOLD,
+  WHAT_IF_CALLOUT,
+} from '../styles/tokens'
+import { replaySynapseFlowToIndex } from '../engine/replayEngine'
 
 export const SWARM_METRICS: Metrics = {
   activeAgents: 612,
@@ -32,6 +38,16 @@ export const CLUSTER_METRICS: Metrics = {
 
 export type TransitionDirection = 'in' | 'out'
 export type ScenarioPhase = 'idle' | 'playing' | 'resolved'
+export interface CreateAgentInput {
+  name: string
+  role: string
+  objective: string
+  spendingLimit: number
+  authorityLevel: AuthorityLevel
+  riskTolerance: Agent['riskTolerance']
+  requiredApprovals: string
+  personalityBlurb?: string
+}
 
 interface SimStore {
   viewMode: ViewMode
@@ -54,6 +70,12 @@ interface SimStore {
   clusterMetricsSnapshot: Metrics | null
   /** Pause background swarm ticker (modals / overlays) */
   swarmPaused: boolean
+  selectedAgentId: string | null
+  whatIfActive: boolean
+  whatIfCallout: string | null
+  scenarioEventIndex: number
+  createModalOpen: boolean
+  demoEpoch: number
 
   setViewMode: (mode: ViewMode) => void
   setTransitionProgress: (p: number) => void
@@ -68,6 +90,9 @@ interface SimStore {
 
   setOpportunity: (state: OpportunityState, label?: string) => void
   setScenarioStarted: (v: boolean) => void
+  setScenarioPaused: (v: boolean) => void
+  setSelectedAgentId: (id: string | null) => void
+  setCreateModalOpen: (v: boolean) => void
 
   updateAgent: (id: string, patch: Partial<Agent>) => void
   clearAgentFlash: (id: string) => void
@@ -76,8 +101,14 @@ interface SimStore {
   upsertTask: (task: Task) => void
   pushFeed: (item: Omit<FeedItem, 'typed'> & { typed?: boolean }) => void
   markFeedTyped: (id: string) => void
-  applySimEvent: (event: SimEvent) => void
+  applySimEvent: (event: SimEvent, opts?: { silent?: boolean; index?: number }) => void
   setMetrics: (patch: Partial<Metrics>) => void
+
+  setSpendingLimit: (agentId: string, amount: number) => void
+  applyNovaWhatIf: (amount: number) => void
+  createAgent: (input: CreateAgentInput) => string
+  resetDemo: () => void
+  scrubToEventIndex: (index: number) => void
 }
 
 /** Gate pull-back / presentational UI off scenario lifecycle */
@@ -91,7 +122,17 @@ export function getScenarioPhase(s: {
 }
 
 function agentsMap(): Record<string, Agent> {
-  return Object.fromEntries(initialAgents.map((a) => [a.id, structuredClone(a)]))
+  return Object.fromEntries(
+    initialAgents.map((a) => [
+      a.id,
+      {
+        ...structuredClone(a),
+        isNew: false,
+        requiredApprovals: null,
+        personalityBlurb: null,
+      },
+    ]),
+  )
 }
 
 function lerp(a: number, b: number, t: number) {
@@ -117,12 +158,21 @@ export const useSimStore = create<SimStore>((set, get) => ({
   pulledBack: false,
   clusterMetricsSnapshot: null,
   swarmPaused: false,
+  selectedAgentId: null,
+  whatIfActive: false,
+  whatIfCallout: null,
+  scenarioEventIndex: -1,
+  createModalOpen: false,
+  demoEpoch: 0,
 
   setViewMode: (mode) => set({ viewMode: mode }),
   setTransitionProgress: (p) => set({ transitionProgress: p }),
   setDisplayMetrics: (m) => set({ displayMetrics: m }),
   setUseMorphFallback: (v) => set({ useMorphFallback: v }),
   setSwarmPaused: (v) => set({ swarmPaused: v }),
+  setSelectedAgentId: (id) => set({ selectedAgentId: id }),
+  setCreateModalOpen: (v) => set({ createModalOpen: v }),
+  setScenarioPaused: (v) => set({ scenarioPaused: v }),
 
   lerpMetricsToCluster: (t) => {
     const state = get()
@@ -200,20 +250,26 @@ export const useSimStore = create<SimStore>((set, get) => ({
   setScenarioStarted: (v) => set({ scenarioStarted: v }),
 
   updateAgent: (id, patch) =>
-    set((s) => ({
-      agents: {
-        ...s.agents,
-        [id]: { ...s.agents[id], ...patch },
-      },
-    })),
+    set((s) => {
+      if (!s.agents[id]) return s
+      return {
+        agents: {
+          ...s.agents,
+          [id]: { ...s.agents[id], ...patch },
+        },
+      }
+    }),
 
   clearAgentFlash: (id) =>
-    set((s) => ({
-      agents: {
-        ...s.agents,
-        [id]: { ...s.agents[id], flash: null, floatingDelta: null },
-      },
-    })),
+    set((s) => {
+      if (!s.agents[id]) return s
+      return {
+        agents: {
+          ...s.agents,
+          [id]: { ...s.agents[id], flash: null, floatingDelta: null },
+        },
+      }
+    }),
 
   upsertRelationship: (rel) =>
     set((s) => {
@@ -240,10 +296,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
 
   pushFeed: (item) =>
     set((s) => ({
-      feed: [
-        { ...item, typed: item.typed ?? false },
-        ...s.feed,
-      ].slice(0, 40),
+      feed: [{ ...item, typed: item.typed ?? false }, ...s.feed].slice(0, 40),
     })),
 
   markFeedTyped: (id) =>
@@ -257,57 +310,202 @@ export const useSimStore = create<SimStore>((set, get) => ({
       displayMetrics: { ...s.displayMetrics, ...patch },
     })),
 
-  applySimEvent: (event) => {
+  applySimEvent: (event, opts) => {
     const store = get()
-    const agentName =
-      event.agentId === 'system'
-        ? 'SYSTEM'
-        : store.agents[event.agentId]?.name ?? event.agentId
-
-    store.pushFeed({
-      id: `feed-${event.id}`,
-      agentId: event.agentId,
-      agentName,
-      message: event.message,
-      timestamp: event.timestamp,
-    })
+    const silent = opts?.silent ?? false
+    if (!silent) {
+      const agentName =
+        event.agentId === 'system'
+          ? 'SYSTEM'
+          : store.agents[event.agentId]?.name ?? event.agentId
+      store.pushFeed({
+        id: `feed-${event.id}-${Date.now()}`,
+        agentId: event.agentId,
+        agentName,
+        message: event.message,
+        timestamp: event.timestamp,
+      })
+    }
 
     for (const effect of event.downstreamEffects) {
-      applyEffect(effect, event, get)
+      applyEffect(effect, event, get, { silent })
     }
+
+    if (opts?.index != null) {
+      set({ scenarioEventIndex: opts.index })
+    }
+  },
+
+  setSpendingLimit: (agentId, amount) => {
+    get().updateAgent(agentId, { spendingLimit: amount })
+    if (agentId === 'nova') {
+      get().applyNovaWhatIf(amount)
+    }
+  },
+
+  applyNovaWhatIf: (amount) => {
+    const crossed = amount >= WHAT_IF_NOVA_THRESHOLD
+    const wasActive = get().whatIfActive
+
+    if (crossed && !wasActive) {
+      get().upsertRelationship({
+        id: 'nova-out',
+        type: 'provides_data_to',
+        sourceAgentId: 'nova',
+        targetAgentId: 'vega',
+        status: 'active',
+        reason: 'What-if: advanced without verification',
+        activeTaskId: null,
+      })
+      set({
+        whatIfActive: true,
+        whatIfCallout: WHAT_IF_CALLOUT,
+      })
+    } else if (!crossed && wasActive) {
+      get().upsertRelationship({
+        id: 'nova-out',
+        type: 'provides_data_to',
+        sourceAgentId: 'nova',
+        targetAgentId: 'vega',
+        status: 'severed',
+        reason: 'Workflow severed',
+        activeTaskId: null,
+      })
+      set({
+        whatIfActive: false,
+        whatIfCallout: null,
+      })
+    }
+  },
+
+  createAgent: (input) => {
+    const id = `agent-${Date.now()}`
+    const count = Object.keys(get().agents).length
+    const agent: Agent = {
+      id,
+      name: input.name.toUpperCase(),
+      role: input.role,
+      objective: input.objective,
+      trustScore: 70,
+      trustDimensions: {
+        policyCompliance: 70,
+        decisionQuality: 70,
+        costEfficiency: 70,
+        reliability: 70,
+        riskAwareness: 70,
+        collaboration: 70,
+      },
+      authorityLevel: input.authorityLevel,
+      spendingLimit: input.spendingLimit,
+      riskTolerance: input.riskTolerance,
+      status: 'idle',
+      currentTask: null,
+      position: {
+        x: 400 + (count % 3) * 40,
+        y: 520 + Math.floor(count / 3) * 30,
+      },
+      history: [],
+      flash: null,
+      floatingDelta: null,
+      blockReason: null,
+      isNew: true,
+      requiredApprovals: input.requiredApprovals || null,
+      personalityBlurb: input.personalityBlurb ?? null,
+    }
+
+    set((s) => ({
+      agents: { ...s.agents, [id]: agent },
+      metrics: {
+        ...s.metrics,
+        activeAgents: Object.keys(s.agents).length + 1,
+      },
+      displayMetrics: {
+        ...s.displayMetrics,
+        activeAgents: Object.keys(s.agents).length + 1,
+      },
+      createModalOpen: false,
+      selectedAgentId: id,
+    }))
+
+    setTimeout(() => {
+      get().updateAgent(id, { isNew: false })
+    }, 3000)
+
+    return id
+  },
+
+  resetDemo: () => {
+    set((s) => ({
+      viewMode: 'swarm',
+      metrics: { ...SWARM_METRICS },
+      displayMetrics: { ...SWARM_METRICS },
+      agents: agentsMap(),
+      relationships: [],
+      tasks: [],
+      feed: [],
+      opportunity: 'hidden',
+      opportunityLabel:
+        'SynapseFlow — 40% Lower Cost — $240,000 Potential Annual Savings',
+      scenarioStarted: false,
+      scenarioPaused: false,
+      transitionProgress: 0,
+      selectedAgentId: null,
+      whatIfActive: false,
+      whatIfCallout: null,
+      scenarioEventIndex: -1,
+      createModalOpen: false,
+      demoEpoch: s.demoEpoch + 1,
+    }))
+  },
+
+  scrubToEventIndex: (index) => {
+    const snapshot = replaySynapseFlowToIndex(index)
+    set({
+      agents: snapshot.agents,
+      relationships: snapshot.relationships,
+      tasks: snapshot.tasks,
+      feed: snapshot.feed,
+      opportunity: snapshot.opportunity,
+      opportunityLabel: snapshot.opportunityLabel,
+      scenarioPaused: true,
+      scenarioStarted: true,
+      scenarioEventIndex: index,
+      whatIfActive: false,
+      whatIfCallout: null,
+      viewMode: 'cluster',
+      metrics: { ...CLUSTER_METRICS, ...snapshot.metrics },
+      displayMetrics: { ...CLUSTER_METRICS, ...snapshot.metrics },
+    })
   },
 }))
 
 type Get = () => SimStore
 
-function applyEffect(
+export function applyEffect(
   effect: string,
   event: SimEvent,
   get: Get,
+  opts?: { silent?: boolean },
 ) {
+  const silent = opts?.silent ?? false
   const [kind, ...rest] = effect.split(':')
   const payload = rest.join(':')
 
   switch (kind) {
     case 'status': {
-      // status:nova:blocked
       const [id, status] = payload.split(':')
-      get().updateAgent(id, {
-        status: status as Agent['status'],
-      })
+      get().updateAgent(id, { status: status as Agent['status'] })
       break
     }
     case 'task': {
-      // task:nova:Estimated annual savings analysis
       const [id, ...taskParts] = payload.split(':')
       get().updateAgent(id, { currentTask: taskParts.join(':') })
       break
     }
     case 'flash': {
+      if (silent) break
       const [id, color] = payload.split(':')
-      get().updateAgent(id, {
-        flash: color as Agent['flash'],
-      })
+      get().updateAgent(id, { flash: color as Agent['flash'] })
       setTimeout(() => get().clearAgentFlash(id), 1800)
       break
     }
@@ -320,13 +518,10 @@ function applyEffect(
       break
     }
     case 'clear_block': {
-      get().updateAgent(payload, {
-        blockReason: null,
-      })
+      get().updateAgent(payload, { blockReason: null })
       break
     }
     case 'rel': {
-      // rel:atlas-nova:provides_data_to:atlas:nova:active
       const [id, type, source, target, status] = payload.split(':')
       get().upsertRelationship({
         id,
@@ -340,7 +535,6 @@ function applyEffect(
       break
     }
     case 'rel_block': {
-      // rel_block:sentinel-nova:SENTINEL blocked NOVA
       const [id, ...reasonParts] = payload.split(':')
       const existing = get().relationships.find((r) => r.id === id)
       get().upsertRelationship({
@@ -368,7 +562,6 @@ function applyEffect(
       break
     }
     case 'add_task': {
-      // add_task:vendor-verification:Vendor Verification:atlas:pending:medium
       const [id, name, owner, status, risk] = payload.split(':')
       get().upsertTask({
         id,
@@ -383,7 +576,6 @@ function applyEffect(
       break
     }
     case 'trust': {
-      // trust:nova:-8:Attempted to proceed without verification
       const [id, deltaStr, ...reasonParts] = payload.split(':')
       const delta = Number(deltaStr)
       const agent = get().agents[id]
@@ -396,20 +588,20 @@ function applyEffect(
       )
       get().updateAgent(id, {
         ...updated,
-        flash: delta < 0 ? 'red' : 'green',
-        floatingDelta: delta,
+        flash: silent ? null : delta < 0 ? 'red' : 'green',
+        floatingDelta: silent ? null : delta,
       })
-      setTimeout(() => get().clearAgentFlash(id), 2200)
+      if (!silent) {
+        setTimeout(() => get().clearAgentFlash(id), 2200)
+      }
       break
     }
     case 'spend': {
-      // spend:nova:2500
       const [id, amount] = payload.split(':')
       get().updateAgent(id, { spendingLimit: Number(amount) })
       break
     }
     case 'opportunity': {
-      // opportunity:escalated:Escalated to Vega — pending executive review.
       const [state, ...labelParts] = payload.split(':')
       get().setOpportunity(
         state as OpportunityState,
@@ -418,7 +610,6 @@ function applyEffect(
       break
     }
     case 'metrics': {
-      // metrics:blockedWorkflows:1:approvalsWaiting:1
       const parts = payload.split(':')
       const patch: Partial<Metrics> = {}
       for (let i = 0; i < parts.length; i += 2) {

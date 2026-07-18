@@ -5,7 +5,8 @@ import {
   useSimStore,
 } from '../store/useSimStore'
 import { formatMoney } from '../engine/trustEngine'
-import { fonts } from '../styles/tokens'
+import { fonts, colors } from '../styles/tokens'
+import { stopScenario } from '../engine/eventEngine'
 
 const ORG_WIDE_EXTRA =
   SWARM_METRICS.activeAgents - CLUSTER_METRICS.activeAgents
@@ -37,7 +38,7 @@ function Metric({
         className="text-lg font-semibold tabular-nums tracking-tight"
         style={{
           fontFamily: fonts.mono,
-          color: emphasize ? 'var(--accent-cyan)' : 'var(--text-primary)',
+          color: emphasize ? colors.cyan : 'var(--text-primary)',
         }}
       >
         {value}
@@ -61,14 +62,21 @@ function Metric({
 export function StatusBar() {
   const viewMode = useSimStore((s) => s.viewMode)
   const m = useSimStore((s) => s.displayMetrics)
+  const resetDemo = useSimStore((s) => s.resetDemo)
+  const setCreateModalOpen = useSimStore((s) => s.setCreateModalOpen)
   const showClusterExtras = viewMode === 'cluster' || viewMode === 'transitioning'
   const showOrgWide = viewMode === 'cluster'
 
+  const onReset = () => {
+    stopScenario()
+    resetDemo()
+  }
+
   return (
     <header
-      className="relative z-50 flex items-center justify-between gap-6 border-b px-6 py-2.5"
+      className="relative z-50 flex items-center justify-between gap-4 border-b px-6 py-2.5"
       style={{
-        background: 'rgba(7, 11, 18, 0.9)',
+        background: 'rgba(10, 11, 15, 0.92)',
         borderColor: 'var(--border-subtle)',
         backdropFilter: 'blur(12px)',
       }}
@@ -98,7 +106,8 @@ export function StatusBar() {
             ▾
           </span>
           <span className="tracking-wide">
-            Viewing: <span style={{ color: 'var(--text-primary)', opacity: 0.85 }}>Vantix AI</span>
+            Viewing:{' '}
+            <span style={{ color: 'var(--text-primary)', opacity: 0.85 }}>Vantix AI</span>
           </span>
         </button>
       </div>
@@ -124,9 +133,57 @@ export function StatusBar() {
             <Metric label="Blocked Workflows" value={String(m.blockedWorkflows)} />
             <Metric label="Approvals Waiting" value={String(m.approvalsWaiting)} />
           </>
+      <div className="flex items-center gap-3">
+        {viewMode === 'cluster' && (
+          <button
+            type="button"
+            onClick={() => setCreateModalOpen(true)}
+            className="rounded border px-2.5 py-1.5 text-[10px] font-semibold tracking-[0.14em] uppercase transition hover:bg-white/5"
+            style={{
+              borderColor: 'rgba(77,216,255,0.35)',
+              color: colors.cyan,
+              fontFamily: fonts.mono,
+            }}
+          >
+            + Agent
+          </button>
         )}
-        <Metric label="Money Under Mgmt" value={formatMoney(m.moneyUnderMgmt)} />
-        <Metric label="Org Trust" value={String(m.organizationalTrust)} emphasize />
+        <button
+          type="button"
+          onClick={onReset}
+          className="rounded border px-2.5 py-1.5 text-[10px] font-semibold tracking-[0.14em] uppercase transition hover:bg-white/5"
+          style={{
+            borderColor: 'var(--border-subtle)',
+            color: 'var(--text-muted)',
+            fontFamily: fonts.mono,
+          }}
+          title="Reset fully to swarm cold open"
+        >
+          Reset Demo
+        </button>
+
+        <div
+          className="flex shrink-0 items-center divide-x"
+          style={{ borderColor: 'var(--border-subtle)' }}
+        >
+          <Metric
+            label="Active Agents"
+            value={m.activeAgents.toLocaleString()}
+            emphasize
+          />
+          <Metric
+            label="Tasks In Progress"
+            value={m.tasksInProgress.toLocaleString()}
+          />
+          {showClusterExtras && (
+            <>
+              <Metric label="Blocked Workflows" value={String(m.blockedWorkflows)} />
+              <Metric label="Approvals Waiting" value={String(m.approvalsWaiting)} />
+            </>
+          )}
+          <Metric label="Money Under Mgmt" value={formatMoney(m.moneyUnderMgmt)} />
+          <Metric label="Org Trust" value={String(m.organizationalTrust)} emphasize />
+        </div>
       </div>
     </header>
   )

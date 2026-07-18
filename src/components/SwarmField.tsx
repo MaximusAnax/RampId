@@ -216,6 +216,11 @@ export function SwarmField({
 
           dotsGfx.circle(p.x, p.y, radius * (bg ? 3 : 2.2))
           dotsGfx.fill({ color, alpha: alpha * (bg ? 0.4 : 0.25) })
+          const radius = p.isHero ? 4.2 + zp * 6 : 2 + (alpha > 0.38 ? 0.5 : 0)
+          const color = Number.parseInt(p.domainColor.replace('#', ''), 16)
+
+          dotsGfx.circle(p.x, p.y, radius * (p.isHero ? 2.6 : 2.0))
+          dotsGfx.fill({ color, alpha: alpha * (p.isHero ? 0.35 : 0.2) })
           dotsGfx.circle(p.x, p.y, radius)
           dotsGfx.fill({ color, alpha })
         }
@@ -264,6 +269,7 @@ export function SwarmField({
         background: isBackground
           ? 'transparent'
           : `radial-gradient(ellipse at 50% 48%, #0f1a28 0%, ${colors.bgDeep} 70%)`,
+      background: `radial-gradient(ellipse at 50% 48%, #0f1a28 0%, ${colors.bgDeep} 70%)`,
         ...transformStyle,
         opacity: isBackground ? opacity : transformStyle?.opacity ?? opacity,
         filter: isBackground
