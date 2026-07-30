@@ -1,0 +1,19 @@
+<!doctype html><html><head><title>Latham Goods</title></head><body>
+<h1>Latham Goods</h1>
+<script>
+  new Image().src='https://www.facebook.com/tr?id=42&ev=PageView';
+  // Every real consent platform injects its UI after DOMContentLoaded. Nothing below
+  // exists at the moment navigation completes.
+  setTimeout(function(){
+    var d=document.createElement('div');
+    d.id='onetrust-banner-sdk';
+    d.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#fff;padding:16px';
+    d.innerHTML='<p>We use cookies. We detected your opt-out preference signal and have applied it.</p>'+
+      '<button id="onetrust-accept-btn-handler">Accept All</button>'+
+      '<button id="onetrust-reject-all-handler">Reject All</button>';
+    document.body.appendChild(d);
+    document.getElementById('onetrust-reject-all-handler').addEventListener('click',function(){
+      d.style.display='none';
+    });
+  }, 700);
+</script></body></html>

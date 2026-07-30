@@ -212,6 +212,12 @@ const FINDING_PASS = {
   PRE_CONSENT: 'baseline',
   NO_CMP: 'baseline',
   NO_REJECT_CONTROL: null,
+  // The display requirement is evidenced by what the GPC pass showed on the page, not by
+  // requests. Leaving it unmapped made it fall into the branch written for
+  // NO_REJECT_CONTROL, so the sender's own verification sheet asserted no reject control
+  // was found on scans where the scanner had clicked one — a contradiction in the single
+  // artefact that exists to be checked before sending.
+  OPTOUT_NOT_DISPLAYED: 'gpc',
 };
 
 /** Findings that cannot lead a message without a named service to point at. */
@@ -656,11 +662,13 @@ function buildPlainFacts(ctx) {
       );
     }
     if (rows.length > 6) facts.push(`${rows.length - 6} further service(s) recorded in the same pass.`);
-  } else {
+  } else if (ctx.lead.finding.id === 'NO_REJECT_CONTROL') {
     facts.push(
       'Pass 3 could not be completed: no reject control was found at the top layer of the ' +
         'banner by automated interaction.'
     );
+  } else {
+    facts.push('No third-party requests are quoted for this observation.');
   }
 
   return facts.map((fact, index) =>

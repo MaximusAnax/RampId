@@ -175,8 +175,18 @@ export function classifyAll(urls, { pageHost = null, sampleLimit = 5 } = {}) {
 
     if (existing) {
       if (existing.requests.length < sampleLimit) existing.requests.push(url.slice(0, 400));
+      // Consent signals are assessed over EVERY observed request, not just the retained
+      // samples. Judging on the truncated array silently flips the verdict: five requests
+      // carrying a denial signal followed by a sixth carrying none would be scored as fully
+      // restrained, and the one unrestricted request — the only one that matters — would
+      // never be examined.
+      if (existing.kind === 'tracker') existing.allRequests.push(url);
     } else {
-      bucket.set(hit.id, { ...hit, requests: [url.slice(0, 400)] });
+      bucket.set(hit.id, {
+        ...hit,
+        requests: [url.slice(0, 400)],
+        ...(hit.kind === 'tracker' ? { allRequests: [url] } : {}),
+      });
     }
   }
 
@@ -192,7 +202,10 @@ export function classifyAll(urls, { pageHost = null, sampleLimit = 5 } = {}) {
   // One unsignalled request is enough to make the service reportable, because that request
   // carried no restriction.
   for (const tracker of trackers.values()) {
-    const assessments = tracker.requests.map((u) => assessTrackerRequest(u, tracker));
+    const assessments = tracker.allRequests.map((u) => ({
+      url: u,
+      ...assessTrackerRequest(u, tracker),
+    }));
     const statuses = assessments.map((a) => a.status);
 
     tracker.consentSignal = statuses.every((s) => s === 'signalled-denied')
@@ -201,7 +214,23 @@ export function classifyAll(urls, { pageHost = null, sampleLimit = 5 } = {}) {
         ? 'signalled-granted'
         : 'unknown';
 
-    tracker.consentSignalExplanation = assessments[0]?.explanation ?? null;
+    // Quote the request that actually drove the verdict.
+    //
+    // Handing the client requests[0] regardless means the evidence URL for a reportable
+    // service can be one that visibly carries a consent-denied signal. The engineer asked
+    // to check it pastes it into their network panel, sees the denial parameter, and
+    // concludes the finding is wrong — which, on that URL, it is.
+    const decisive =
+      tracker.consentSignal === 'signalled-denied'
+        ? assessments[0]
+        : (assessments.find((a) => a.status !== 'signalled-denied') ?? assessments[0]);
+
+    tracker.evidenceUrl = decisive?.url?.slice(0, 400) ?? tracker.requests[0] ?? null;
+    tracker.consentSignalExplanation = decisive?.explanation ?? null;
+    tracker.observedRequestCount = tracker.allRequests.length;
+
+    // The full list is working state, not output; keeping it would bloat every stored scan.
+    delete tracker.allRequests;
   }
 
   const rank = (t) => SEVERITY_RANK[t.severity] ?? 0;

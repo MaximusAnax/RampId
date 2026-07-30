@@ -73,6 +73,18 @@ async function runPass(browser, url, { gpc = false, clickReject: doReject = fals
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 40000 });
 
+    // Let the page finish becoming itself before inspecting it.
+    //
+    // Every real consent platform injects its banner with JavaScript after
+    // DOMContentLoaded, and so does any acknowledgement that an opt-out preference signal
+    // was processed. Inspecting immediately after navigation sees a page that has not
+    // rendered its consent UI yet, which manufactures two of the worst false accusations
+    // this system can make: "no consent mechanism detected" about a site with a visible
+    // banner, and "no indication the opt-out signal was processed" about a site that says
+    // so plainly a moment later. Static test fixtures hide this completely, because inline
+    // markup is present at DOMContentLoaded.
+    await page.waitForTimeout(settleMs);
+
     pass.consent = await detectConsentPlatform(page, []);
 
     // Only meaningful on the GPC pass: the obligation is to display that a signal was
@@ -80,7 +92,6 @@ async function runPass(browser, url, { gpc = false, clickReject: doReject = fals
     if (gpc) pass.optOutDisplay = await detectOptOutDisplay(page);
 
     if (doReject) {
-      await page.waitForTimeout(Math.min(3500, settleMs));
       // Mark the cut point *before* clicking. Clearing the buffer afterwards races
       // against the banner's own click handler, which usually fires its pixels
       // synchronously — those are precisely the requests this pass exists to catch,
@@ -90,9 +101,9 @@ async function runPass(browser, url, { gpc = false, clickReject: doReject = fals
       pass.rejectClicked = outcome.clicked;
       pass.rejectMethod = outcome.method;
       if (!pass.rejectClicked) cutFrom = 0;
-    }
 
-    await page.waitForTimeout(settleMs);
+      await page.waitForTimeout(settleMs);
+    }
   } catch (err) {
     pass.error = String(err.message || err).slice(0, 240);
   }
@@ -242,7 +253,7 @@ const trackerView = (t) => ({
   severity: t.severity,
   evidence: t.evidence,
   consentSignal: t.consentSignal,
-  sample: t.requests[0] ?? null,
+  sample: t.evidenceUrl ?? t.requests[0] ?? null,
 });
 
 const summarise = (cls, pass) => ({
@@ -288,22 +299,33 @@ function buildFindings({ A, B, C, reject, consentPlatforms, bannerVisible }) {
     });
   }
 
-  if (reject.rejectClicked && C.reportable.length) {
+  // Apply the same severity floor GPC_IGNORED uses. Without it, a single medium-severity
+  // analytics tag whose consent signal was merely unreadable produces a critical finding,
+  // and the exposure score is what ranks prospects and what the client reads first.
+  const rejectIgnored = C.reportable.filter((t) => SEVERITY_RANK[t.severity] >= 2);
+
+  if (reject.rejectClicked && rejectIgnored.length) {
     findings.push({
       id: 'REJECT_IGNORED',
       severity: 'critical',
-      title: `${C.reportable.length} tracker(s) continued firing after the reject control was clicked`,
+      title: `${rejectIgnored.length} tracker(s) continued firing after the reject control was clicked`,
       detail:
         'The consent banner offered a reject control, it was clicked, and these trackers ' +
         'transmitted afterwards. This contradicts the choice the site itself presented.',
-      trackers: C.reportable.map((t) => t.name),
+      trackers: rejectIgnored.map((t) => t.name),
     });
   }
 
   // Gate on bannerVisible, not just on recognising a named platform. A bespoke or
   // self-hosted banner is a real consent mechanism even when no signature matches it, and
   // claiming otherwise is a factual error the reader can disprove instantly.
-  if (!hasCmp && !bannerVisible && A.reportable.length) {
+  // A scan that found and clicked a reject control has proved a consent mechanism exists,
+  // whatever the detectors concluded. Without this check the same document can say the
+  // reject control was clicked in its method section and that no consent mechanism could be
+  // identified in its findings — a self-contradiction a reader resolves against us.
+  const rejectProvesMechanism = reject.rejectClicked === true;
+
+  if (!hasCmp && !bannerVisible && !rejectProvesMechanism && A.reportable.length) {
     findings.push({
       id: 'NO_CMP',
       severity: 'high',
@@ -315,7 +337,19 @@ function buildFindings({ A, B, C, reject, consentPlatforms, bannerVisible }) {
     });
   }
 
-  if (!reject.rejectClicked && (hasCmp || bannerVisible)) {
+  // Two guards, both learned from cases where this finding was wrong.
+  //
+  // First, a pass that failed to load cannot support any claim about the banner it never
+  // saw — a transient network failure on our side would otherwise be rendered to the client
+  // as a high-severity defect in their consent design.
+  //
+  // Second, the claim is about a *banner*, so it must rest on having seen one. A CMP script
+  // request proves the SDK was served, not that a banner rendered; these SDKs ship to every
+  // visitor while the banner itself is frequently geo-gated, so network evidence alone would
+  // make this finding fire routinely on correctly-behaving sites.
+  const rejectPassLoaded = !reject.error && (reject.observedRequestCount ?? 0) >= 1;
+
+  if (!reject.rejectClicked && bannerVisible && rejectPassLoaded) {
     findings.push({
       id: 'NO_REJECT_CONTROL',
       severity: 'high',

@@ -207,3 +207,26 @@ test('a successful scan reports healthy capture across all three passes', async 
   assert.equal(scan.capture.passesLoaded, 3);
   assert.equal(scan.capture.note, null);
 });
+
+test('a banner injected after DOMContentLoaded is still detected', async () => {
+  // The regression guard for the worst false-positive bug found in this system. Consent
+  // detection and the opt-out display check originally ran the instant navigation
+  // completed, before any page had rendered its consent UI. Every real consent platform
+  // injects its banner with JavaScript after DOMContentLoaded, so the scanner would have
+  // reported "no consent mechanism" and "no indication the opt-out signal was processed"
+  // about sites that display both a moment later.
+  //
+  // Static fixtures hide this completely, which is why every earlier test passed. This one
+  // renders its banner on a timer, the way real platforms do.
+  const scan = await scanConsent(`${base}/async-banner.html`, { settleMs: 2000 });
+
+  assert.ok(scan.cmp.length > 0, 'the late-rendered banner must be detected');
+  assert.equal(scan.bannerVisible, true);
+
+  const ids = scan.findings.map((f) => f.id);
+  assert.ok(!ids.includes('NO_CMP'), 'must not claim there is no consent mechanism');
+  assert.ok(
+    !ids.includes('OPTOUT_NOT_DISPLAYED'),
+    'the page acknowledges the opt-out signal, so this must not fire'
+  );
+});
