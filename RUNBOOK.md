@@ -65,7 +65,36 @@ neither can their engineer, and it will be dismissed.
 
 ---
 
+## Before any outreach at all: publish the index
+
+This is a gate, not a phase. The aggregate sector index must exist, be public, and ideally
+have been cited once by counsel or press **before** the first named email goes out.
+
+The reason is blunt. An email that opens "we scanned your site and here is the tracker that
+fired" has the same first sentence as the demand letters a handful of volume plaintiff firms
+send to hundreds of brands weekly, using the same scanning technique. Recipients' counsel
+have trained them to forward those and never reply. Publishing first converts your message
+from a threat into research follow-up, and it is the difference between a reply rate and
+nothing at all.
+
+```bash
+node cli.js campaign --sector="US retail" --out=runs/index-build $(cat sector-list.txt)
+# then publish runs/index-build/sector-index.html
+```
+
 ## Outreach: the rules that matter more than the copy
+
+**Lead with the section 7025(c)(6) display requirement, not with the tracker.** Since
+1 January 2026 a business that processes an opt-out preference signal must display that it
+has done so. "The regulation requires your site to show this, here is what yours shows" is a
+compliance observation. "Here is the pixel that fired" is, in form, a demand letter. Same
+scan, opposite category. The generator already orders it this way — do not reorder it.
+
+**Send to the operator, not to Legal.** Director of Marketing Ops, Web Analytics, or Privacy
+Ops. They own the tag stack, they can verify your finding in five minutes, they are
+personally embarrassed by it, and they are not conflict-checking you. Legal is the function
+trained to forward this to litigation counsel. Privilege only matters once there is a
+trigger, and by then counsel is introducing you anyway.
 
 The first message contains a true, specific, checkable fact about the recipient's own site.
 Not a pitch, not credentials, not a value proposition.
@@ -130,6 +159,20 @@ which would have been invisible:
 selling vigilance, you are selling the fact that their own release process keeps
 reintroducing the problem, and that nobody internally is watching for it.
 
+**Price it at $1,250–1,500 per domain per month, two-domain floor.** The original $3–6k was
+2–3x too high against real comparables: Privado's Web Auditor is $600/site/month and Osano
+Enterprise runs roughly $2–3k/month for an entire consent platform.
+
+**The archive is a liability as well as an asset.** A standing weekly scan is ordinary-course
+activity, so it is unprivilegeable under any structure, and its history is a dated record of
+when the client knew and had not yet fixed. Two things make that survivable, and both belong
+in the contract: 90-day rolling retention on raw captures, and a remediation-status field on
+every finding so the archive documents fixing rather than knowing.
+
+**Never sell one account both a counsel-routed assessment and monitoring covering the same
+scope.** The subscription contract is the exhibit that destroys privilege over the
+assessment.
+
 ---
 
 ## The channel, which is worth more than any outreach improvement
@@ -144,16 +187,21 @@ else's scan. You make their work cheaper and better.
 Two things to get right before you approach a firm, both of which are still open questions
 flagged in the business plan and should be confirmed with a lawyer:
 
-1. **Fee sharing.** Revenue-share arrangements with law firms run into professional-conduct
-   rules on sharing fees with non-lawyers. The structure most likely to work is being
-   engaged *by* the firm as a consultant, not paying them for referrals.
-2. **Privilege.** A report a company commissions directly may be discoverable in
-   litigation. Commissioned through counsel, it may be protected. If that holds, the law
-   firm channel is not merely better distribution, it is the only structure a
-   well-advised client will accept — which would change the business from selling to
-   companies to selling to firms.
+1. **Fee sharing is barred, so do not plan around it.** Model Rule 5.4(a) prohibits sharing
+   legal fees with non-lawyers, and you paying the firm for referrals creates a Rule
+   1.7(a)(2) conflict most privacy firms will not paper for a small vendor. The workable
+   arrangement is a nonexclusive, disclosed, *unpaid* mutual referral understanding. Your
+   money comes from the engagement itself.
+2. **Privilege does not come free from involving a GC.** A GC-commissioned scan of your own
+   site is a textbook dual-purpose engagement, and the Ninth Circuit — where CIPA litigation
+   lives — applies the strict primary-purpose test. For accounts with a live trigger (demand
+   letter, CPPA or AG inquiry, M&A diligence), run the engagement through outside counsel,
+   invoiced to the firm and passed through as a disbursement **at actual cost** — ABA Formal
+   Op. 93-379 bars surcharging. For untriggered accounts, do not claim privilege at all; sell
+   openly as ordinary-course compliance work.
 
-Do not scale outreach until these two are settled. They determine who your customer is.
+Confirm both with a lawyer before approaching a firm. They determine how you contract, not
+whether you have a business.
 
 ---
 
