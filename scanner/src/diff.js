@@ -95,10 +95,17 @@ export function findCaptureProblems(scan, label = 'scan') {
       problems.push(`The ${label} ${key} pass ended with an error: ${pass.error}`);
       continue;
     }
-    // A pass that loaded anything at all records at least the document request. Zero
-    // requests therefore means the capture failed, not that the page is clean — and a
+    // A pass that loaded anything at all records at least its own document request, so
+    // zero normally means the capture failed rather than that the page is clean — and a
     // clean-looking failure is exactly the input that would fabricate an improvement.
-    if (!(pass.requestCount > 0)) {
+    //
+    // The post-reject pass is the one exception, and getting it wrong would be worse than
+    // having no guard at all. consent.js cuts the request buffer at the moment the reject
+    // control is clicked, so a site that honours its own reject button legitimately
+    // records zero requests after it. Treating that as a broken capture would refuse to
+    // compare exactly the compliant sites this engine most needs to keep monitoring.
+    const emptyIsExpected = key === 'afterReject' && pass.rejectClicked === true;
+    if (!(pass.requestCount > 0) && !emptyIsExpected) {
       problems.push(
         `The ${label} ${key} pass recorded no network requests at all, which indicates a ` +
           'failed page load rather than an absence of trackers.'
@@ -684,6 +691,9 @@ function nameList(names) {
 
 /** "12 June", or "12 June 2025" when the two scans fall in different years. */
 function formatCheckDate(iso, referenceIso) {
+  // Guard the empty cases before Date sees them: new Date(null) is a valid date, and a
+  // scan stored without a timestamp would otherwise be narrated as "since 1 January 1970".
+  if (typeof iso !== 'string' || !iso.trim()) return null;
   const when = new Date(iso);
   if (Number.isNaN(when.getTime())) return null;
   const reference = new Date(referenceIso);
@@ -734,50 +744,8 @@ export function summarizeDrift(diff) {
   const added = trackerNarrative(diff, 'tracker-added', MATERIALITY.REGRESSION);
   const removed = trackerNarrative(diff, 'tracker-removed', MATERIALITY.IMPROVEMENT);
 
-  const regressionSentences = [];
-  const improvementSentences = [];
-
-  added.forEach((group, index) => {
-    const count = group.names.length;
-    const since = index === 0 ? sinceClause : '';
-
-    if (count === 1) {
-      regressionSentences.push(
-        `${group.names[0]} began firing ${PASS_PHRASE_PAST[group.leadPass]}${since}.`
-      );
-    } else {
-      regressionSentences.push(
-        `${sentenceCase(countWord(count))} ${categoryNoun(group.category, count)} began firing ` +
-          `${PASS_PHRASE_PAST[group.leadPass]}${since}.`,
-        `${nameList(group.names)} now transmit ${PASS_PHRASE_PRESENT[group.leadPass]}.`
-      );
-    }
-
-    // Naming the gravest pass separately matters: a tag that fires on load is a
-    // configuration slip, and the same tag still firing after the visitor declines is a
-    // different statement about the same tag.
-    if (group.worstPass !== group.leadPass) {
-      regressionSentences.push(
-        `${count === 1 ? 'It also transmits' : 'They also transmit'} ` +
-          `${PASS_PHRASE_PRESENT[group.worstPass]}.`
-      );
-    }
-  });
-
-  removed.forEach((group) => {
-    const count = group.names.length;
-    if (count === 1) {
-      improvementSentences.push(
-        `${group.names[0]} no longer transmits ${PASS_PHRASE_PRESENT[group.leadPass]}.`
-      );
-    } else {
-      improvementSentences.push(
-        `${sentenceCase(countWord(count))} ${categoryNoun(group.category, count)} are no longer ` +
-          `observed ${PASS_PHRASE_PAST[group.leadPass]}.`,
-        `${nameList(group.names)} no longer transmit ${PASS_PHRASE_PRESENT[group.leadPass]}.`
-      );
-    }
-  });
+  const regressionSentences = addedSentences(added, sinceClause);
+  const improvementSentences = removedSentences(removed);
 
   for (const finding of [...diff.newFindings].sort((a, b) => b.rank - a.rank)) {
     // Skip the finding-level sentence when the tracker sentences above already described
@@ -866,6 +834,89 @@ const CLOSING_LINE =
   'internet. It states no conclusion about your legal position.';
 
 const paragraphs = (parts) => parts.filter((part) => part && part.trim()).join('\n\n');
+
+/**
+ * How many tracker groups get a sentence of their own before the rest are collapsed.
+ *
+ * Real drift is one or two tags at a time, so this almost never bites. It exists for the
+ * case where a site is rebuilt between checks: an alert that opens with nine near-identical
+ * sentences does not get read, and an unread alert is a retainer nobody renews. The full
+ * list is always in the diff object and the report.
+ */
+const NARRATED_GROUP_LIMIT = 2;
+
+function addedSentences(groups, sinceClause) {
+  const sentences = [];
+
+  groups.slice(0, NARRATED_GROUP_LIMIT).forEach((group, index) => {
+    const count = group.names.length;
+    const since = index === 0 ? sinceClause : '';
+
+    if (count === 1) {
+      sentences.push(`${group.names[0]} began firing ${PASS_PHRASE_PAST[group.leadPass]}${since}.`);
+    } else {
+      sentences.push(
+        `${sentenceCase(countWord(count))} ${categoryNoun(group.category, count)} began firing ` +
+          `${PASS_PHRASE_PAST[group.leadPass]}${since}.`,
+        `${nameList(group.names)} now transmit ${PASS_PHRASE_PRESENT[group.leadPass]}.`
+      );
+    }
+
+    // Naming the gravest pass separately matters: a tag that fires on load is a
+    // configuration slip, and the same tag still firing after the visitor declines is a
+    // different statement about the same tag.
+    if (group.worstPass !== group.leadPass) {
+      sentences.push(
+        `${count === 1 ? 'It also transmits' : 'They also transmit'} ` +
+          `${PASS_PHRASE_PRESENT[group.worstPass]}.`
+      );
+    }
+  });
+
+  return sentences.concat(remainderSentences(groups.slice(NARRATED_GROUP_LIMIT), 'added'));
+}
+
+function removedSentences(groups) {
+  const sentences = [];
+
+  for (const group of groups.slice(0, NARRATED_GROUP_LIMIT)) {
+    const count = group.names.length;
+    if (count === 1) {
+      sentences.push(`${group.names[0]} no longer transmits ${PASS_PHRASE_PRESENT[group.leadPass]}.`);
+    } else {
+      sentences.push(
+        `${sentenceCase(countWord(count))} ${categoryNoun(group.category, count)} are no longer ` +
+          `observed ${PASS_PHRASE_PAST[group.leadPass]}.`,
+        `${nameList(group.names)} no longer transmit ${PASS_PHRASE_PRESENT[group.leadPass]}.`
+      );
+    }
+  }
+
+  return sentences.concat(remainderSentences(groups.slice(NARRATED_GROUP_LIMIT), 'removed'));
+}
+
+/**
+ * Collapse the tail into one sentence per pass. Each tracker is still named and still tied
+ * to the pass it started or stopped firing in; only the escalation detail is dropped, which
+ * is an omission rather than a claim.
+ */
+function remainderSentences(groups, kind) {
+  if (!groups.length) return [];
+
+  const byLeadPass = new Map();
+  for (const group of groups) {
+    byLeadPass.set(group.leadPass, [...(byLeadPass.get(group.leadPass) || []), ...group.names]);
+  }
+
+  return [...byLeadPass.entries()]
+    .sort(([a], [b]) => PASS_GRAVITY[b] - PASS_GRAVITY[a])
+    .map(([passKey, names]) =>
+      kind === 'added'
+        ? `${nameList(names)} also began firing ${PASS_PHRASE_PAST[passKey]}.`
+        : `${nameList(names)} ${names.length === 1 ? 'is' : 'are'} also no longer observed ` +
+          `${PASS_PHRASE_PAST[passKey]}.`
+    );
+}
 
 function fillFromDescriptions(sentences, changes, materiality) {
   if (sentences.length) return;

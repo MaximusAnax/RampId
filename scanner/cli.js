@@ -12,12 +12,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { scanConsent } from './src/consent.js';
+import { monitorAll, triage } from './src/monitor.js';
 import { scanSite } from './src/scan.js';
 import { renderReport } from './src/report.js';
 
 const argv = process.argv.slice(2);
-const mode = argv[0] === 'ai50' ? 'ai50' : 'consent';
-const rest = argv[0] === 'consent' || argv[0] === 'ai50' ? argv.slice(1) : argv;
+const MODES = new Set(['consent', 'ai50', 'monitor']);
+const mode = MODES.has(argv[0]) ? argv[0] : 'consent';
+const rest = MODES.has(argv[0]) ? argv.slice(1) : argv;
 
 const flag = (n, d) => {
   const hit = rest.find((a) => a.startsWith(`--${n}=`));
@@ -28,7 +30,9 @@ const outDir = flag('out', 'results');
 const concurrency = Math.max(1, Number(flag('concurrency', 2)));
 
 if (!targets.length) {
-  console.error('usage: node cli.js [consent|ai50] <url...> [--out=dir] [--concurrency=2]');
+  console.error(
+    'usage: node cli.js [consent|ai50|monitor] <url...> [--out=dir] [--concurrency=2] [--data=dir]'
+  );
   process.exit(1);
 }
 
@@ -53,6 +57,45 @@ async function pool(items, n, fn) {
     })
   );
   return out;
+}
+
+if (mode === 'monitor') {
+  const dataRoot = flag('data', 'data');
+  const urls = targets.map((t) => (t.startsWith('http') ? t : `https://${t}`));
+
+  const results = await monitorAll(urls, {
+    dataRoot,
+    concurrency,
+    onResult: (r) =>
+      process.stderr.write(
+        `  ${r.skipped ? 'skipped' : (r.diff?.status ?? 'done')}  ${r.url}` +
+          (r.skipped ? `  (${r.reason})` : '') +
+          '\n'
+      ),
+  });
+
+  const t = triage(results);
+  fs.writeFileSync(path.join(outDir, 'monitor.json'), JSON.stringify(results, null, 2));
+
+  console.log('\n=== MONITOR ===');
+  if (t.regressions.length) {
+    console.log('\nREGRESSIONS (act on these):');
+    for (const r of t.regressions) {
+      console.log(`  +${r.riskDelta}  ${r.url}`);
+      console.log(`      ${r.alert?.subject ?? ''}`);
+    }
+  }
+  if (t.improvements.length) {
+    console.log('\nImprovements:');
+    for (const r of t.improvements) console.log(`  ${r.riskDelta}  ${r.url}`);
+  }
+  if (t.problems.length) {
+    console.log('\nCould not be compared:');
+    for (const r of t.problems) console.log(`  ${r.url} — ${r.reason}`);
+  }
+  console.log(`\n${t.quiet} target(s) unchanged.`);
+  console.log(`wrote ${path.join(outDir, 'monitor.json')}`);
+  process.exit(0);
 }
 
 const results = await pool(targets, concurrency, async (raw) => {

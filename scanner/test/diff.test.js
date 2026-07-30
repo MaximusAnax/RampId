@@ -346,6 +346,42 @@ test('a pass that captured no requests at all is treated as a failed capture', (
   );
 });
 
+test('an empty post-reject pass on a compliant site is a real result, not a failed capture', () => {
+  // Found by diffing two real scans of the local fixtures. consent.js cuts the request
+  // buffer at the click, so a site that honours its own reject button records zero
+  // requests in that pass. Treating that as a broken capture refused to compare exactly
+  // the compliant sites the retainer is supposed to keep watching.
+  const compliantAfterReject = { requestCount: 0, trackerCount: 0, trackers: [], error: null };
+  const previous = makeScan({
+    scannedAt: JUNE,
+    baseline: [TRACKER.ga],
+    passOverrides: { afterReject: compliantAfterReject },
+  });
+  const current = makeScan({
+    scannedAt: JULY,
+    baseline: [TRACKER.ga, TRACKER.meta],
+    findings: [FINDING.preConsent(['Google Analytics', 'Meta Pixel'])],
+    riskScore: 30,
+    passOverrides: { afterReject: compliantAfterReject },
+  });
+
+  const diff = diffScans(previous, current);
+
+  assert.equal(diff.status, DRIFT_STATUS.COMPARED);
+  assert.deepEqual(diff.captureProblems, []);
+  assert.equal(diff.perPass.afterReject.comparable, true);
+  assert.deepEqual(diff.newTrackers.map((t) => t.name), ['Meta Pixel']);
+
+  // The exemption is narrow: with no reject control clicked, the pass records the whole
+  // page load, so zero requests there really is a failed capture.
+  const noRejectControl = makeScan({
+    scannedAt: JULY,
+    rejectClicked: false,
+    passOverrides: { afterReject: { requestCount: 0 } },
+  });
+  assert.equal(diffScans(previous, noRejectControl).status, DRIFT_STATUS.NOT_COMPARABLE);
+});
+
 test('a post-reject pass measured on a different basis is recorded but not characterised', () => {
   // The reject control was clickable in June and is not now, so the pass captured the whole
   // page load this time. Trackers "appearing" there describe the measurement, not the site.

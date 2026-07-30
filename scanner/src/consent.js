@@ -77,7 +77,17 @@ async function runPass(browser, url, { gpc = false, clickReject: doReject = fals
     pass.error = String(err.message || err).slice(0, 240);
   }
 
+  // Two different counts, because they answer two different questions.
+  // `requests` is what fired in the window we care about (after the reject click, for the
+  // reject pass). `observedRequestCount` is everything the page issued at all.
+  //
+  // The distinction is load-bearing: a site that correctly halts every tracker after the
+  // visitor clicks reject produces zero requests in the sliced window. That is the BEST
+  // possible outcome, and judging capture health on the sliced count would misread it as a
+  // failed page load — which would make the system unable to monitor precisely the
+  // well-behaved clients who are paying for monitoring.
   pass.requests = [...new Set(requests.slice(cutFrom))];
+  pass.observedRequestCount = requests.length;
   await context.close().catch(() => {});
   return pass;
 }
@@ -152,6 +162,7 @@ export async function scanConsent(url, opts = {}) {
 }
 
 const summarise = (cls, pass) => ({
+  observedRequestCount: pass.observedRequestCount ?? pass.requests.length,
   trackerCount: cls.trackers.length,
   trackers: cls.trackers.map((t) => ({
     name: t.name,
