@@ -52,6 +52,25 @@ export function regressionRank(severity, passKey) {
   return (SEVERITY_RANK[severity] ?? 1) * 10 + (PASS_GRAVITY[passKey] ?? 1);
 }
 
+/**
+ * The pass a movement should be ranked and narrated as, which is not always the pass it was
+ * observed in.
+ *
+ * consent.js only slices the request buffer from the moment the reject control is clicked.
+ * When no reject control can be found it keeps the whole page load, so on such a site the
+ * third pass is a second plain page load wearing the post-reject name. Ranking or narrating
+ * it as post-reject would tell the client a tracker "now fires after a visitor clicks
+ * reject" on a site that offers no reject button at all — a statement that is false, is in
+ * the email subject line, and is trivially disproved by the reader. It would also hand that
+ * change the maximum rank this engine can assign, which is reserved for a tracker that
+ * genuinely survives a click the site's own banner offered.
+ *
+ * A load with no consent interaction is exactly what the baseline pass observes, so that is
+ * what it is ranked and narrated as.
+ */
+const narrationPass = (passKey, measuredPostReject) =>
+  passKey === 'afterReject' && !measuredPostReject ? 'baseline' : passKey;
+
 const findingRank = (severity) => (SEVERITY_RANK[severity] ?? 1) * 10;
 
 /** A consent platform disappearing matters, but it ranks below any tracker movement. */
@@ -135,7 +154,12 @@ const emptyPassDiff = (passKey) => ({
   materiality: MATERIALITY.NEUTRAL,
   note: null,
   ...(passKey === 'afterReject'
-    ? { rejectClicked: { previous: null, current: null, changed: false } }
+    ? {
+        rejectClicked: { previous: null, current: null, changed: false },
+        // True only when both scans found and clicked a reject control, i.e. when this pass
+        // observed post-reject behaviour on both sides rather than a plain page load.
+        measuredPostReject: false,
+      }
     : {}),
 });
 
@@ -155,6 +179,11 @@ function emptyDiff(previous, current, status) {
     // which is a claim, and no claim is available here.
     riskDelta: null,
     riskScore: { previous: previous?.riskScore ?? null, current: current?.riskScore ?? null },
+    // Why no comparison was made: 'capture' when a scan did not record the page properly,
+    // 'pairing' when both scans are fine but do not describe the same measurement. The
+    // narrative has to tell those apart, because telling a client their scan failed when it
+    // did not is the same class of false statement as telling them their tracking improved.
+    blockedBy: null,
     summary: '',
     newTrackers: [],
     removedTrackers: [],
@@ -209,22 +238,55 @@ export function diffScans(previous, current) {
   if (previousProblems.length) return notComparable(previous, current, previousProblems);
 
   if (hostOf(previous.url) !== hostOf(current.url)) {
-    return notComparable(previous, current, [
-      `The two scans are of different hosts (${hostOf(previous.url)} and ` +
-        `${hostOf(current.url)}), so any difference between them is meaningless.`,
-    ]);
+    return notComparable(
+      previous,
+      current,
+      [
+        `The two scans are of different hosts (${hostOf(previous.url)} and ` +
+          `${hostOf(current.url)}), so any difference between them is meaningless.`,
+      ],
+      'pairing'
+    );
+  }
+
+  // Refuse a pair handed over in the wrong order.
+  //
+  // Every classification in this file is directional, so a reversed pair narrates a
+  // regression as an improvement and dates it "since the last check on" a day that has not
+  // happened yet. That is the same false statement the capture guards above exist to
+  // prevent, arriving through a different door, and it is invisible in the output: the
+  // wording is just as confident either way. Equal timestamps are left alone — diffing a
+  // scan against itself is a legitimate no-op.
+  const previousTime = Date.parse(previous.scannedAt);
+  const currentTime = Date.parse(current.scannedAt);
+  if (Number.isFinite(previousTime) && Number.isFinite(currentTime) && currentTime < previousTime) {
+    return notComparable(
+      previous,
+      current,
+      [
+        `The scan offered as the current one (${current.scannedAt}) was taken before the ` +
+          `scan offered as the previous one (${previous.scannedAt}). The pair is in the ` +
+          'wrong order, and comparing it would describe every difference backwards.',
+      ],
+      'pairing'
+    );
   }
 
   return compare(previous, current);
 }
 
-function notComparable(previous, current, problems) {
+function notComparable(previous, current, problems, blockedBy = 'capture') {
   const diff = emptyDiff(previous, current, DRIFT_STATUS.NOT_COMPARABLE);
   diff.captureProblems = problems;
+  diff.blockedBy = blockedBy;
   diff.notes.push(
-    'No drift is reported from this pair of scans. An incomplete capture records fewer ' +
-      'trackers than the page actually loads, so comparing it would manufacture an ' +
-      'improvement that did not happen.'
+    blockedBy === 'capture'
+      ? 'No drift is reported from this pair of scans. An incomplete capture records fewer ' +
+          'trackers than the page actually loads, so comparing it would manufacture an ' +
+          'improvement that did not happen.'
+      : 'No drift is reported from this pair of scans. The two scans do not describe the ' +
+          'same measurement, so any difference between them would be a property of the ' +
+          'pairing rather than of the site.'
   );
   diff.summary = summarizeDrift(diff).subject;
   return diff;
@@ -304,6 +366,7 @@ function diffPass(passKey, before, after) {
       current: currentClicked,
       changed: previousClicked !== currentClicked,
     };
+    result.measuredPostReject = previousClicked && currentClicked;
 
     // When the reject control could be clicked in one scan and not the other, this pass
     // measured two different things: post-click traffic versus the whole page load. Tracker
@@ -322,25 +385,40 @@ function diffPass(passKey, before, after) {
     }
   }
 
+  const narratedAs = narrationPass(passKey, Boolean(result.measuredPostReject));
   const beforeTrackers = indexByName(before.trackers);
   const afterTrackers = indexByName(after.trackers);
 
   result.added = [...afterTrackers.values()]
     .filter((tracker) => !beforeTrackers.has(tracker.name))
-    .map((tracker) => classifiedTracker(tracker, passKey, MATERIALITY.REGRESSION, result.comparable));
+    .map((tracker) =>
+      classifiedTracker(tracker, passKey, narratedAs, MATERIALITY.REGRESSION, result.comparable)
+    );
 
   result.removed = [...beforeTrackers.values()]
     .filter((tracker) => !afterTrackers.has(tracker.name))
-    .map((tracker) => classifiedTracker(tracker, passKey, MATERIALITY.IMPROVEMENT, result.comparable));
+    .map((tracker) =>
+      classifiedTracker(tracker, passKey, narratedAs, MATERIALITY.IMPROVEMENT, result.comparable)
+    );
 
   result.trackerCountDelta = (after.trackerCount ?? 0) - (before.trackerCount ?? 0);
   result.requestCountDelta = (after.requestCount ?? 0) - (before.requestCount ?? 0);
   result.materiality = worstMateriality([...result.added, ...result.removed]);
 
+  // Said only when the pass actually moved, otherwise every scan of a site without a reject
+  // control carries a paragraph of measurement caveat nobody needed. A note already set
+  // above describes a change of measurement basis, which is the more specific fact.
+  if (!result.note && narratedAs !== passKey && (result.added.length || result.removed.length)) {
+    result.note =
+      'No reject control could be found on the consent banner in either check, so the ' +
+      'post-reject pass recorded the whole page load both times. Differences there are ' +
+      'reported as page-load observations, not as behaviour after a visitor declines.';
+  }
+
   return result;
 }
 
-function classifiedTracker(tracker, passKey, materiality, comparable) {
+function classifiedTracker(tracker, passKey, narratedAs, materiality, comparable) {
   return {
     name: tracker.name,
     category: tracker.category,
@@ -348,8 +426,10 @@ function classifiedTracker(tracker, passKey, materiality, comparable) {
     evidence: tracker.evidence,
     sample: tracker.sample ?? null,
     pass: passKey,
+    // The pass this movement is ranked and described as; see narrationPass.
+    narrativePass: narratedAs,
     materiality: comparable ? materiality : MATERIALITY.NEUTRAL,
-    rank: comparable ? regressionRank(tracker.severity, passKey) : 0,
+    rank: comparable ? regressionRank(tracker.severity, narratedAs) : 0,
   };
 }
 
@@ -363,37 +443,51 @@ const worstMateriality = (items) =>
 function trackerChanges(perPass) {
   const changes = [];
   for (const key of PASS_KEYS) {
+    const where = passDescription(key, perPass[key]);
     for (const tracker of perPass[key].added) {
       changes.push({
         kind: 'tracker-added',
         pass: key,
+        narrativePass: tracker.narrativePass,
         name: tracker.name,
         category: tracker.category,
         severity: tracker.severity,
         materiality: tracker.materiality,
         rank: tracker.rank,
         description:
-          `${tracker.name} was observed in the ${PASS_LABEL[key]} pass and was not ` +
-          'observed there at the previous check.',
+          `${tracker.name} was observed ${where} and was not observed there at the ` +
+          'previous check.',
       });
     }
     for (const tracker of perPass[key].removed) {
       changes.push({
         kind: 'tracker-removed',
         pass: key,
+        narrativePass: tracker.narrativePass,
         name: tracker.name,
         category: tracker.category,
         severity: tracker.severity,
         materiality: tracker.materiality,
         rank: tracker.rank,
         description:
-          `${tracker.name} was observed in the ${PASS_LABEL[key]} pass at the previous ` +
-          'check and was not observed there in this one.',
+          `${tracker.name} was observed ${where} at the previous check and was not ` +
+          'observed there in this one.',
       });
     }
   }
   return changes;
 }
+
+/**
+ * Where a movement was observed, in words. These descriptions are a fallback body for change
+ * kinds the narrative has no prose of its own for, so the post-reject pass has to say plainly
+ * when it recorded a whole page load instead of the traffic after a click.
+ */
+const passDescription = (passKey, passDiff) =>
+  passKey === 'afterReject' && !passDiff.measuredPostReject
+    ? 'in the third page load, where no reject control was clicked and the whole load was ' +
+      'therefore recorded,'
+    : `in the ${PASS_LABEL[passKey]} pass`;
 
 function findingDiff(previousFindings, currentFindings) {
   const before = new Map(previousFindings.map((finding) => [finding.id, finding]));
@@ -570,15 +664,18 @@ function scanWideTrackerSets(previous, current, perPass) {
 
   const describe = (tracker, side, materiality) => {
     const passes = passesContaining(tracker.name, side);
-    const relevant = passes.filter((key) =>
-      materiality === MATERIALITY.REGRESSION
-        ? perPass[key].added.some((t) => t.name === tracker.name)
-        : perPass[key].removed.some((t) => t.name === tracker.name)
+    // Ranked on the pass each movement is narrated as, not the pass it sits in, so a site
+    // with no reject control cannot reach the ceiling reserved for surviving a real click.
+    const movements = PASS_KEYS.flatMap((key) =>
+      perPass[key].comparable
+        ? (materiality === MATERIALITY.REGRESSION ? perPass[key].added : perPass[key].removed)
+            .filter((t) => t.name === tracker.name)
+            .map((t) => t.narrativePass)
+        : []
     );
-    const comparablePasses = relevant.filter((key) => perPass[key].comparable);
-    const worstPass = comparablePasses.reduce(
-      (worst, key) => (PASS_GRAVITY[key] > PASS_GRAVITY[worst ?? 'baseline'] ? key : worst),
-      comparablePasses[0] ?? null
+    const worstPass = movements.reduce(
+      (worst, key) => (worst === null || PASS_GRAVITY[key] > PASS_GRAVITY[worst] ? key : worst),
+      null
     );
     return {
       name: tracker.name,
@@ -977,10 +1074,12 @@ function trackerNarrative(diff, kind, materiality) {
     const entry = byTracker.get(change.name) || {
       name: change.name,
       category: change.category,
-      passes: [],
+      passes: new Set(),
       rank: 0,
     };
-    entry.passes.push(change.pass);
+    // Deduplicated because two passes can narrate as the same one: with no reject control
+    // clicked, the post-reject pass describes a plain page load, exactly as baseline does.
+    entry.passes.add(change.narrativePass ?? change.pass);
     entry.rank = Math.max(entry.rank, change.rank);
     byTracker.set(change.name, entry);
   }

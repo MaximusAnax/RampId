@@ -97,27 +97,32 @@ export function slugifyTarget(target) {
     );
   }
 
-  // Runs of dashes are left alone on purpose: URL punycodes an internationalised host to
-  // "xn--mnchen-3ya.de", and collapsing that pair would corrupt the name and let two
-  // distinct IDN hosts land in one directory.
-  const slug = candidate
+  // A host is either "name" or "name:port", and URL always brackets an IPv6 literal, so a
+  // trailing ":digits" is unambiguously the port. It is split off and re-attached rather
+  // than fed through the character rules, which keeps "example.com:8080" a readable
+  // directory name instead of a hashed one.
+  const portMatch = /:(\d+)$/.exec(candidate);
+  const port = portMatch ? portMatch[1] : null;
+  const hostName = (portMatch ? candidate.slice(0, portMatch.index) : candidate)
     .toLowerCase()
-    .replace(/[^a-z0-9.-]+/g, '-')
-    .replace(/\.{2,}/g, '.')
-    .replace(/^[-.]+|[-.]+$/g, '');
+    // The root dot of a fully qualified name is not part of the name: "example.com." and
+    // "example.com" are one host and must share one history rather than fork into two.
+    .replace(/\.+$/, '');
 
-  if (!slug) {
+  const hostSlug = slugifyHostName(hostName);
+  if (!hostSlug) {
     throw new StoreError(
       'UNSAFE_TARGET',
       `Target reduces to an empty directory name: ${JSON.stringify(raw)}`
     );
   }
+
+  const slug = port ? `${hostSlug}-${port}` : hostSlug;
   if (slug.length <= MAX_SLUG_LENGTH) return slug;
 
   // Truncation with a digest of the full slug appended, so two very long hosts sharing a
   // 64-character prefix cannot end up writing into one another's history.
-  const digest = createHash('sha1').update(slug).digest('hex').slice(0, 8);
-  return `${slug.slice(0, MAX_SLUG_LENGTH).replace(/[-.]+$/, '')}-${digest}`;
+  return `${slug.slice(0, MAX_SLUG_LENGTH).replace(/[-.]+$/, '')}-${shortDigest(slug)}`;
 }
 
 /** Absolute directory holding one target's history. Never escapes the root. */
@@ -145,13 +150,26 @@ export function targetDirectory(target, { root = DEFAULT_DATA_ROOT } = {}) {
  * record, and a future reader must see exactly what the engine produced.
  */
 export async function saveScan(target, scanResult, { root = DEFAULT_DATA_ROOT } = {}) {
-  if (!scanResult || typeof scanResult !== 'object') {
+  if (!scanResult || typeof scanResult !== 'object' || Array.isArray(scanResult)) {
     throw new StoreError('INVALID_SCAN', 'saveScan requires a scan result object.');
   }
 
   const directory = targetDirectory(target, { root });
   const slug = path.basename(directory);
   const scannedAt = normaliseTimestamp(scanResult.scannedAt) ?? new Date().toISOString();
+
+  // A timestamp outside the four-digit-year range renders as "+012026-07-30T…", which no
+  // reader recognises as a scan file. Without this check the record is written, saveScan
+  // reports success, and the scan is then invisible to getHistory, to listTargets and to
+  // every monitoring comparison built on them — a false negative manufactured by the
+  // storage layer, which is the one failure this module exists to prevent. Refused loudly
+  // instead: a scan the store cannot file is not a scan the store has kept.
+  if (!SCAN_FILE_PATTERN.test(scanFileName(Date.parse(scannedAt)))) {
+    throw new StoreError(
+      'INVALID_SCAN',
+      `scannedAt cannot be filed as a scan record: ${JSON.stringify(scanResult.scannedAt)}`
+    );
+  }
 
   const filePath = await reserveScanPath(directory, scannedAt);
   const record = {
@@ -261,16 +279,25 @@ export async function saveTargetMeta(target, meta, { root = DEFAULT_DATA_ROOT } 
   const filePath = path.join(directory, META_FILE);
   const existing = (await readJson(filePath)) ?? {};
 
+  // Keys carrying undefined are dropped rather than merged. Spreading them overwrites the
+  // stored value and JSON.stringify then removes the key entirely, so an operator screen
+  // saving `{ tier: form.tier }` with that field left blank would erase the tier someone
+  // set last month — the exact loss the patch semantics above promise cannot happen. An
+  // explicit null still clears a field, because that is a deliberate instruction.
+  const patch = Object.fromEntries(
+    Object.entries(meta).filter(([, value]) => value !== undefined)
+  );
+
   const merged = {
     ...DEFAULT_META,
     ...existing,
-    ...meta,
-    target: meta.target ?? existing.target ?? String(target),
+    ...patch,
+    target: patch.target ?? existing.target ?? String(target),
     slug,
     // An explicit firstSeen wins, so a wrong value can be corrected. It is never changed
     // by an ordinary merge, because it anchors the evidence timeline a retainer is
     // measured against.
-    firstSeen: meta.firstSeen ?? existing.firstSeen ?? new Date().toISOString(),
+    firstSeen: patch.firstSeen ?? existing.firstSeen ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
 
@@ -333,6 +360,39 @@ export function createStore(root = DEFAULT_DATA_ROOT) {
 /* ------------------------------------------------------------------ internals */
 
 /**
+ * Reduce a host name (no port) to a directory name, or '' if nothing usable survives.
+ *
+ * Runs of dashes are left alone on purpose: URL punycodes an internationalised host to
+ * "xn--mnchen-3ya.de", and collapsing that pair would corrupt the name and let two distinct
+ * IDN hosts land in one directory.
+ */
+function slugifyHostName(hostName) {
+  const sanitised = hostName
+    .replace(/[^a-z0-9.-]+/g, '-')
+    .replace(/\.{2,}/g, '.')
+    .replace(/^[-.]+|[-.]+$/g, '');
+
+  if (!sanitised) return '';
+  if (sanitised === hostName) return sanitised;
+
+  // Anything the character rules had to rewrite is ambiguous, and ambiguity here merges two
+  // clients' evidence: "[::1]" and "[1::]" both flatten to "1", so one machine's history
+  // would land in the other's directory and a monitoring diff would compare a host against
+  // a host it has never seen. A digest of the real name keeps them apart. Ordinary DNS
+  // names and IPv4 addresses are untouched, so the common case stays a browsable folder.
+  return `${sanitised}-${shortDigest(hostName)}`;
+}
+
+const shortDigest = (value) => createHash('sha1').update(value).digest('hex').slice(0, 8);
+
+/**
+ * A bare host may carry a port, and URL() reads that as a scheme: "example.com:8080" parses
+ * with protocol "example.com:" and no authority whatsoever. That is the only shape allowed
+ * through the authority-less branch of resolveHost below.
+ */
+const BARE_HOST_AND_PORT = /^[^\s:/\\?#]+:\d+(?:[/?#]|$)/;
+
+/**
  * Extract the host part of a target, or null if there isn't a usable one.
  *
  * The two branches are deliberately not collapsed into one URL() call. Prefixing a scheme
@@ -341,12 +401,22 @@ export function createStore(root = DEFAULT_DATA_ROOT) {
  * would file a scan of "/etc/passwd" under a target named "etc" instead of refusing it.
  */
 function resolveHost(raw) {
+  let parsed = null;
   try {
-    const { host } = new URL(raw);
-    // An absolute URL parsed its own authority, so its path cannot leak into the name.
-    if (host) return host;
+    parsed = new URL(raw);
   } catch {
     /* not an absolute URL; read it as a bare host below */
+  }
+
+  if (parsed) {
+    // An absolute URL parsed its own authority, so its path cannot leak into the name.
+    if (parsed.host) return parsed.host;
+
+    // Parsed, but with no authority at all: "file:///etc/passwd", "mailto:a@b.com",
+    // "C:\\evidence". Reading those as bare hosts splits them at the first separator and
+    // mistakes the scheme itself for a host, filing a scan under "file", "b.com" or "c" —
+    // a target nobody named, which is the outcome slugifyTarget refuses on principle.
+    if (!BARE_HOST_AND_PORT.test(raw)) return null;
   }
 
   // Bare host, possibly carrying a port and a path. Everything from the first separator
@@ -362,7 +432,13 @@ function resolveHost(raw) {
   }
 }
 
-const fileStamp = (date) => date.toISOString().replace(/[:.]/g, '-');
+/**
+ * The one place a scan file name is constructed. ISO with ":" and "." replaced, because a
+ * raw ISO stamp is an illegal file name on Windows and awkward to handle in a shell; the
+ * stamp stays fixed-width UTC, which is what makes SCAN_FILE_PATTERN and the sort in
+ * listScanFileNames correct.
+ */
+const scanFileName = (millis) => `${new Date(millis).toISOString().replace(/[:.]/g, '-')}.json`;
 
 function timestampFromFileName(fileName) {
   const [datePart, timePart] = fileName.replace(/\.json$/, '').split('T');
@@ -404,7 +480,7 @@ async function reserveScanPath(directory, scannedAt) {
 
   let millis = Date.parse(scannedAt);
   for (let attempt = 0; attempt < 1000; attempt += 1) {
-    const filePath = path.join(directory, `${fileStamp(new Date(millis))}.json`);
+    const filePath = path.join(directory, scanFileName(millis));
     if (!(await pathExists(filePath))) return filePath;
     millis += 1;
   }

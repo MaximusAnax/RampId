@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Tracking &amp; Consent Evidence — Wellspring Co</title>
+<title>Tracking &amp; Consent Evidence — Northgate Bank</title>
 <style>
   :root { --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#ffffff; --panel:#f8fafc; }
   @media (prefers-color-scheme: dark) {
@@ -39,7 +39,7 @@
 <body><div class="wrap">
 
 <h1>Tracking &amp; consent evidence</h1>
-<p class="lede">Wellspring Co · observed Thu, 30 Jul 2026 20:45:52 GMT</p>
+<p class="lede">Northgate Bank · observed Thu, 30 Jul 2026 21:16:02 GMT</p>
 
 <div class="score">
   <b>60</b>
@@ -48,15 +48,15 @@
 </div>
 
 <p>This report records what a browser actually transmitted when it loaded
-<code>http://127.0.0.1:8222/x.html</code>. It was produced entirely from the public site. No access to
+<code>http://127.0.0.1:8240/x.html</code>. It was produced entirely from the public site. No access to
 your systems, accounts, or data was used or required.</p>
 
 <h2>What we observed</h2>
       <article class="finding" style="background:#fef2f2;border-color:#fecaca">
         <div class="sev" style="color:#b91c1c">Critical</div>
-        <h3>1 third-party tracker(s) fired before any consent interaction</h3>
+        <h3>2 third-party tracker(s) fired before any consent interaction</h3>
         <p>A consent platform (OneTrust) is deployed, yet these trackers transmitted before the visitor made any choice.</p>
-        <p class="muted">Services observed: TikTok Pixel</p>
+        <p class="muted">Services observed: TikTok Pixel, Ada</p>
       </article>
       <article class="finding" style="background:#fef2f2;border-color:#fecaca">
         <div class="sev" style="color:#b91c1c">Critical</div>
@@ -77,10 +77,13 @@ your systems, accounts, or data was used or required.</p>
         <td><strong>TikTok Pixel</strong><div class="muted">ad-pixel</div></td>
         <td>Transmits page and event data to TikTok.</td>
         <td><code>analytics.tiktok.com</code></td>
+      </tr>
+      <tr>
+        <td><strong>Ada</strong><div class="muted">customer-success</div></td>
+        <td>Transmits visitor interaction data to a customer engagement service.</td>
+        <td><code>static.ada.support</code></td>
       </tr></tbody></table></div>
-    <p class="muted"><strong>Also observed, and not counted as findings:</strong>
-           Meta Pixel, Google Analytics. These requests carried a signal that consent was denied
-           (Google Consent Mode or Limited Data Use), which is the designed behaviour.</p>
+    
   </section>
 
   <section class="pass">
@@ -92,10 +95,13 @@ your systems, accounts, or data was used or required.</p>
         <td><strong>TikTok Pixel</strong><div class="muted">ad-pixel</div></td>
         <td>Transmits page and event data to TikTok.</td>
         <td><code>analytics.tiktok.com</code></td>
+      </tr>
+      <tr>
+        <td><strong>Ada</strong><div class="muted">customer-success</div></td>
+        <td>Transmits visitor interaction data to a customer engagement service.</td>
+        <td><code>static.ada.support</code></td>
       </tr></tbody></table></div>
-    <p class="muted"><strong>Also observed, and not counted as findings:</strong>
-           Meta Pixel, Google Analytics. These requests carried a signal that consent was denied
-           (Google Consent Mode or Limited Data Use), which is the designed behaviour.</p>
+    
   </section>
 
   <section class="pass">
@@ -118,9 +124,18 @@ your systems, accounts, or data was used or required.</p>
 </ol>
 
 <h2>Why this is being measured</h2>
-<p class="muted">Recent public enforcement by the California Privacy Protection Agency involving
-tracking and opt-out handling:</p>
-<ul><li><strong>Disney / ABC</strong> — $2.75M <span class="muted">(Feb 2026)</span></li><li><strong>PlayOn Sports</strong> — $1.1M <span class="muted">(Q1 2026)</span></li><li><strong>Honda</strong> — $632,500 <span class="muted">(2026 — asymmetric opt-out design)</span></li><li><strong>Ford</strong> — $375,703 <span class="muted">(Mar 2026)</span></li></ul>
+<p class="muted">California's regulators test opt-out mechanisms in real browsers, against real
+advertising and analytics stacks, and act when the mechanism fails that test. The passes above
+reproduce that examination. Recent public enforcement, and what each turned on:</p>
+<ul><li><strong>Disney / ABC</strong> — $2.75M
+      <span class="muted">(California Attorney General, February 2026)</span><br>
+      <span class="muted">Websites and apps continued sharing data with advertising partners after consumers opted out.</span></li><li><strong>PlayOn Sports</strong> — $1.1M
+      <span class="muted">(CPPA, 2026)</span><br>
+      <span class="muted">No clear mechanism for consumers to opt out of the sale or sharing of personal information.</span></li><li><strong>Honda</strong> — $632,500
+      <span class="muted">(CPPA, 2026)</span><br>
+      <span class="muted">Opt-out flow required more from the consumer than the equivalent opt-in.</span></li><li><strong>Ford</strong> — $375,703
+      <span class="muted">(CPPA, March 2026)</span><br>
+      <span class="muted">Required consumers to verify an email address before an opt-out would be processed.</span></li></ul>
 
 <h2>What this method cannot see</h2>
 <p class="muted">Stated plainly, because a report that overclaims is easy to dismiss in full.</p>

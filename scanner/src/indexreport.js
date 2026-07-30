@@ -420,6 +420,8 @@ function trackerPrevalence(views, pick) {
     );
 }
 
+const canonicalRank = (id) => (FINDING_ORDER.indexOf(id) + 1 || Number.MAX_SAFE_INTEGER);
+
 function unionOfPasses(view) {
   const byName = new Map();
   for (const pass of ['baseline', 'gpc', 'afterReject']) {
@@ -505,7 +507,10 @@ export function buildIndex(scans, { sector = 'Unspecified sector', period = null
           title: FINDING_TITLES[id] ?? id,
           ...proportion(views.filter((view) => hasFinding(view, id)).length, measured),
         }))
-        .sort((a, b) => b.count - a.count || FINDING_ORDER.indexOf(a.id) - FINDING_ORDER.indexOf(b.id)),
+        // Ties break toward the canonical order, and an id this module does not recognise
+        // sorts last rather than first — a new finding type should not silently lead the
+        // table before anyone has written a title for it.
+        .sort((a, b) => b.count - a.count || canonicalRank(a.id) - canonicalRank(b.id)),
     },
 
     consentPlatform: {
@@ -591,9 +596,9 @@ const isoDate = (value) => {
 const countOf = (stat) =>
   stat.denominator > 0 ? `${stat.count} of ${stat.denominator}` : 'no sites measured';
 
-function barRow(label, stat, { emphasis = false } = {}) {
+function barRow(label, stat) {
   return `
-  <div class="barrow${emphasis ? ' strong' : ''}">
+  <div class="barrow">
     <div class="barlabel">${escapeHtml(label)}</div>
     <div class="bartrack"><div class="barfill" style="width:${barWidth(stat.share)}%"></div></div>
     <div class="barvalue">${percent(stat.share)} <span class="muted">(${escapeHtml(countOf(stat))})</span></div>
@@ -720,7 +725,7 @@ function composeIndexHtml(index) {
   const headline = [
     {
       figure: percent(index.findings.anyFinding.share),
-      label: 'of sites measured showed at least one observation',
+      label: 'of measured sites showed at least one of the observations below',
       note: countOf(index.findings.anyFinding),
     },
     {
@@ -767,7 +772,9 @@ function composeIndexHtml(index) {
     ? `<ul>${sample.exclusions
         .map((row) => `<li>${escapeHtml(row.count)} — ${escapeHtml(row.reason)}</li>`)
         .join('')}</ul>`
-    : '<p class="muted">Every site submitted produced a usable capture.</p>';
+    : sample.submitted === 0
+      ? '<p class="muted">No sites were submitted.</p>'
+      : '<p class="muted">Every site submitted produced a usable capture.</p>';
 
   const enforcement = ENFORCEMENT_CONTEXT.map(
     (item) =>
@@ -797,9 +804,10 @@ platform reports what a site declared, not what its browser did.</p>
 ${platformRows}
 
 <h2>Reject controls</h2>
-<p>${escapeHtml(countOf(index.rejectControl.consentMechanismPresent))} measured sites presented a
-consent banner or an identifiable consent platform. On
-${escapeHtml(countOf(index.rejectControl.noRejectControlFound))} of those
+<p>${escapeHtml(String(index.rejectControl.consentMechanismPresent.count))} of the
+${escapeHtml(String(measured))} measured sites presented a consent banner or an identifiable consent
+platform. On ${escapeHtml(String(index.rejectControl.noRejectControlFound.count))} of those
+${escapeHtml(String(index.rejectControl.noRejectControlFound.denominator))} sites
 (${escapeHtml(percent(index.rejectControl.noRejectControlFound.share))}) no reject or decline control
 could be found at the same level as accept by automated interaction.</p>
 <p class="muted">Read this figure as an upper bound on what automation could reach, not as a count of
@@ -889,7 +897,6 @@ ${exclusions}`;
   .bartrack { background:var(--panel); border:1px solid var(--line); border-radius:.25rem;
     height:.7rem; overflow:hidden; }
   .barfill { background:var(--bar); height:100%; }
-  .barrow.strong .barfill { background:var(--barstrong); }
   @media (max-width:34rem) {
     .barrow { grid-template-columns:1fr; gap:.25rem; }
     .barvalue { text-align:left; }
@@ -923,12 +930,11 @@ ${exclusions}`;
 <p class="lede">${escapeHtml(periodLabel)} · ${escapeHtml(String(measured))} sites measured ·
 no individual company is named in this document</p>
 
-<p>This index records what browsers actually transmitted when they loaded the home page of each
-site in a sample of ${escapeHtml(String(sample.submitted))} companies. Every measurement was taken
-from the public internet. No company was contacted, no credentials were used, and no company's
-systems or data were accessed. The figures describe the sample in aggregate and support no
-conclusion about any individual company, including any company that believes it recognises itself
-here.</p>
+<p>This index records what browsers actually transmitted when they loaded one page on each site in a
+sample of ${escapeHtml(String(sample.submitted))} companies. Every measurement was taken from the
+public internet. No company was contacted, no credentials were used, and no company's systems or
+data were accessed. The figures describe the sample in aggregate and support no conclusion about any
+individual company, including any company that believes it recognises itself here.</p>
 
 ${body}
 
@@ -937,8 +943,9 @@ ${body}
   <li><strong>Sample.</strong> ${escapeHtml(String(sample.submitted))} sites submitted;
       ${escapeHtml(String(sample.measured))} produced a usable capture and are the denominator for
       every figure above; ${escapeHtml(String(sample.excluded))} were excluded.</li>
-  <li><strong>Dates.</strong> Measurements were taken ${escapeHtml(observedRange)}. Each figure is a
-      snapshot of that window and nothing else — tag configurations change weekly.</li>
+  <li><strong>Dates.</strong> Measurements were taken over the window ${escapeHtml(observedRange)}.
+      Each figure is a snapshot of that window and nothing else — tag configurations change
+      weekly.</li>
   <li><strong>What was measured.</strong> One page per site, loaded three times with a clean browser
       profile each time: once with no interaction; once with the Global Privacy Control signal
       advertised as <code>Sec-GPC: 1</code> and <code>navigator.globalPrivacyControl = true</code>;

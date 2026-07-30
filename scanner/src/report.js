@@ -16,11 +16,40 @@
 
 import { corpusStats } from './entities.js';
 
+/**
+ * Public enforcement, described by what went wrong rather than by the number.
+ *
+ * The amounts are not the persuasive part — the mechanics are. Each of these was decided on
+ * a technical test of the opt-out mechanism, run in a real browser against a real vendor
+ * stack, which is the same examination this report reproduces. A reader who sees that the
+ * regulator's method and this method are the same understands the report's relevance
+ * without anyone having to assert that they are exposed.
+ */
 const ENFORCEMENT_CONTEXT = [
-  { who: 'Disney / ABC', amount: '$2.75M', when: 'Feb 2026' },
-  { who: 'PlayOn Sports', amount: '$1.1M', when: 'Q1 2026' },
-  { who: 'Honda', amount: '$632,500', when: '2026 — asymmetric opt-out design' },
-  { who: 'Ford', amount: '$375,703', when: 'Mar 2026' },
+  {
+    who: 'Disney / ABC',
+    amount: '$2.75M',
+    when: 'California Attorney General, February 2026',
+    what: 'Websites and apps continued sharing data with advertising partners after consumers opted out.',
+  },
+  {
+    who: 'PlayOn Sports',
+    amount: '$1.1M',
+    when: 'CPPA, 2026',
+    what: 'No clear mechanism for consumers to opt out of the sale or sharing of personal information.',
+  },
+  {
+    who: 'Honda',
+    amount: '$632,500',
+    when: 'CPPA, 2026',
+    what: 'Opt-out flow required more from the consumer than the equivalent opt-in.',
+  },
+  {
+    who: 'Ford',
+    amount: '$375,703',
+    when: 'CPPA, March 2026',
+    what: 'Required consumers to verify an email address before an opt-out would be processed.',
+  },
 ];
 
 const SEVERITY_STYLE = {
@@ -106,7 +135,9 @@ export function renderReport(scan, { company = null } = {}) {
     .join('');
 
   const enforcement = ENFORCEMENT_CONTEXT.map(
-    (e) => `<li><strong>${esc(e.who)}</strong> — ${esc(e.amount)} <span class="muted">(${esc(e.when)})</span></li>`
+    (e) => `<li><strong>${esc(e.who)}</strong> — ${esc(e.amount)}
+      <span class="muted">(${esc(e.when)})</span><br>
+      <span class="muted">${esc(e.what)}</span></li>`
   ).join('');
 
   return `<!doctype html>
@@ -224,8 +255,9 @@ ${passBlock(
 </ol>
 
 <h2>Why this is being measured</h2>
-<p class="muted">Recent public enforcement by the California Privacy Protection Agency involving
-tracking and opt-out handling:</p>
+<p class="muted">California's regulators test opt-out mechanisms in real browsers, against real
+advertising and analytics stacks, and act when the mechanism fails that test. The passes above
+reproduce that examination. Recent public enforcement, and what each turned on:</p>
 <ul>${enforcement}</ul>
 
 <h2>What this method cannot see</h2>

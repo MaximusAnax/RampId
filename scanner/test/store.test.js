@@ -251,6 +251,46 @@ test('a path traversal target is rejected and writes nothing', async () => {
   );
 });
 
+test('a target with no host of its own is refused, not filed under its scheme', async () => {
+  // These parse as URLs but carry no authority at all, so reading them as bare hosts would
+  // mistake the scheme for a host name and open an evidence timeline for "file", "b.com" or
+  // "c" — a company nobody asked to be scanned.
+  for (const target of ['file:///etc/passwd', 'mailto:privacy@example.com', 'C:\\evidence\\x', 'data:text/html,hi']) {
+    assert.throws(
+      () => slugifyTarget(target),
+      (err) => err instanceof StoreError && err.code === 'UNSAFE_TARGET',
+      `${JSON.stringify(target)} names no host and must be refused`
+    );
+  }
+
+  // A bare host with a port looks the same to URL() — protocol "example.com:", no
+  // authority — and must still be accepted, with a directory name a human can read.
+  assert.equal(slugifyTarget('example.com:8080'), 'example.com-8080');
+  assert.equal(slugifyTarget('example.com:8080/pricing'), 'example.com-8080');
+});
+
+test('hosts that differ only in punctuation keep separate histories', async () => {
+  // "[::1]" and "[1::]" are different machines. Flattening both to "1" would file one
+  // client's evidence in the other's directory and make a monitoring diff compare a host
+  // against a host it has never seen.
+  assert.notEqual(slugifyTarget('http://[::1]'), slugifyTarget('http://[1::]'));
+  assert.notEqual(
+    slugifyTarget('http://[2001:db8::1]'),
+    slugifyTarget('http://[2001:db8::2]')
+  );
+
+  await store.saveScan('http://[::1]', scanFixture('2026-07-01T10:00:00.000Z', { riskScore: 11 }));
+  await store.saveScan('http://[1::]', scanFixture('2026-07-01T10:00:00.000Z', { riskScore: 22 }));
+
+  assert.equal((await store.getHistory('http://[::1]')).length, 1);
+  assert.equal((await store.getLatest('http://[::1]')).scan.riskScore, 11);
+  assert.equal((await store.getLatest('http://[1::]')).scan.riskScore, 22);
+  assert.equal((await store.listTargets()).length, 2);
+
+  // A trailing root dot is the same host, though, and must not fork the timeline.
+  assert.equal(slugifyTarget('https://example.com./x'), slugifyTarget('https://example.com/x'));
+});
+
 test('every stored path stays directly under the data root', async () => {
   const rootPath = path.resolve(root);
   for (const target of ['https://shop.example.com/a/b', 'example.com/pricing', 'http://127.0.0.1:8080/x']) {
@@ -342,12 +382,67 @@ test('a corrupt record is reported rather than skipped', async () => {
 });
 
 test('saving something that is not a scan result is refused', async () => {
-  for (const bad of [null, undefined, 'a scan', 42]) {
+  for (const bad of [null, undefined, 'a scan', 42, []]) {
     await assert.rejects(
       () => store.saveScan('shop.example.com', bad),
       (err) => err instanceof StoreError && err.code === 'INVALID_SCAN'
     );
   }
+});
+
+test('a scan whose timestamp cannot be filed is refused rather than written invisibly', async () => {
+  // Date.parse accepts an expanded year, and toISOString renders it as "+012026-…", which no
+  // reader recognises as a scan file. Accepting it would report the save as successful and
+  // then hide the record from getHistory, listTargets and every monitoring comparison —
+  // a false negative created by the storage layer rather than by the site.
+  for (const stamp of ['+012026-07-30T10:00:00.000Z', '-000001-01-01T00:00:00.000Z']) {
+    await assert.rejects(
+      () => store.saveScan('shop.example.com', scanFixture(stamp)),
+      (err) => err instanceof StoreError && err.code === 'INVALID_SCAN',
+      `${stamp} cannot be filed and must not be silently accepted`
+    );
+  }
+
+  assert.deepEqual(await store.getHistory('shop.example.com'), []);
+  assert.deepEqual(await store.listTargets(), []);
+});
+
+test('a temp file orphaned by a crashed write is invisible to every reader', async () => {
+  // Durability rests on write-temp-then-rename, which means a process killed mid-write can
+  // leave a partial file behind. It must never be read back as evidence.
+  const saved = await store.saveScan('shop.example.com', scanFixture('2026-07-01T10:00:00.000Z'));
+  const directory = path.dirname(saved.file);
+
+  await fs.writeFile(path.join(directory, '.2026-07-02T10-00-00-000Z.json.999-deadbeef.tmp'), '{"scan":');
+  await fs.writeFile(path.join(directory, '.meta.json.999-deadbeef.tmp'), '{"companyName":');
+  await fs.writeFile(path.join(path.resolve(root), '.orphan.tmp'), 'x');
+
+  const history = await store.getHistory('shop.example.com');
+  assert.equal(history.length, 1, 'a partial write must not be read back as a scan');
+  assert.equal(history[0].scannedAt, '2026-07-01T10:00:00.000Z');
+
+  const targets = await store.listTargets();
+  assert.deepEqual(targets.map((t) => t.slug), ['shop.example.com']);
+  assert.equal(targets[0].scanCount, 1);
+  assert.equal((await store.getTargetMeta('shop.example.com')).companyName, null);
+});
+
+test('a metadata field left undefined does not erase what is stored', async () => {
+  // An operator screen saving a form with one field blank must not wipe the value someone
+  // else set last month. An explicit null still clears, because that is an instruction.
+  await store.saveTargetMeta('shop.example.com', {
+    companyName: 'Example Retail Inc.',
+    tier: 'monitoring',
+    contactNotes: 'Intro via privacy counsel.',
+  });
+  await store.saveTargetMeta('shop.example.com', { tier: undefined, companyName: undefined });
+
+  const kept = await store.getTargetMeta('shop.example.com');
+  assert.equal(kept.tier, 'monitoring');
+  assert.equal(kept.companyName, 'Example Retail Inc.');
+
+  await store.saveTargetMeta('shop.example.com', { contactNotes: null });
+  assert.equal((await store.getTargetMeta('shop.example.com')).contactNotes, null);
 });
 
 test('no temporary files are left behind after a write', async () => {
