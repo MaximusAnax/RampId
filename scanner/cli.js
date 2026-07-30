@@ -100,11 +100,17 @@ if (mode === 'campaign') {
     console.log(`\n${result.rejected.length} target(s) rejected before scanning:`);
     for (const r of result.rejected.slice(0, 10)) console.log(`  ${r.input} — ${r.reason}`);
   }
-  console.log('\nRanked queue:');
+  console.log(`${result.needsReview} of those need a manual check before sending.`);
+  console.log('\nRanked queue (most sendable first):');
   for (const item of result.ranked) {
+    const flag = !item.draft
+      ? '(nothing to say)'
+      : item.confidence.review === 'routine'
+        ? ''
+        : `<< ${item.confidence.guidance}`;
     console.log(
-      `  ${String(item.riskScore).padStart(3)}  ${slug(item.url).padEnd(38)} ` +
-        `${item.findingIds.join(',') || 'clean'}${item.draft ? '' : '   (nothing to say)'}`
+      `  ${String(item.riskScore).padStart(3)}  ${slug(item.url).padEnd(32)} ` +
+        `${(item.findingIds.join(',') || 'clean').padEnd(32)} ${flag}`
     );
   }
   console.log(`\nreports → ${reportsDir}`);

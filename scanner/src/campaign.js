@@ -17,6 +17,7 @@ import { scanConsent } from './consent.js';
 import { renderReport } from './report.js';
 import { generateOutreach } from './outreach.js';
 import { buildIndex, renderIndexHtml } from './indexreport.js';
+import { scoreScan, REVIEW } from './confidence.js';
 
 /**
  * Run a full prospecting campaign.
@@ -85,12 +86,22 @@ export async function runCampaign(rawTargets, opts = {}) {
       url: scan.url,
       riskScore: scan.riskScore,
       findingIds: scan.findings.map((f) => f.id),
+      // How much of the operator's attention this one actually deserves. The point is not
+      // to skip review — it is to spend the review budget on the few drafts where a human
+      // look changes the outcome, rather than spreading it evenly over twenty that do not.
+      confidence: scoreScan(scan),
       report: renderReport(scan),
       // A clean site yields no draft. There is genuinely nothing to say, and manufacturing
       // a reason to make contact is how this becomes spam.
       draft: safeDraft(scan, senderName),
     }))
-    .sort((a, b) => b.riskScore - a.riskScore);
+    // Actionable items first, most sendable among them at the top; sites with nothing to
+    // say sink to the bottom. A clean site scores maximum confidence, which would otherwise
+    // float it above every draft the operator actually has work to do on.
+    .sort((a, b) => {
+      if (Boolean(a.draft) !== Boolean(b.draft)) return a.draft ? -1 : 1;
+      return b.confidence.confidence - a.confidence.confidence || b.riskScore - a.riskScore;
+    });
 
   const index = usable.length ? buildIndex(usable, { sector, period }) : null;
 
@@ -101,6 +112,7 @@ export async function runCampaign(rawTargets, opts = {}) {
     usable: usable.length,
     unusable: unusable.map((s) => ({ url: s.url, note: s.capture?.note ?? 'capture failed' })),
     contactable: ranked.filter((r) => r.draft).length,
+    needsReview: ranked.filter((r) => r.draft && r.confidence.review !== REVIEW.ROUTINE).length,
     ranked,
     index,
     indexHtml: index ? renderIndexHtml(index) : null,
