@@ -19,6 +19,14 @@ import { createStore } from './store.js';
 import { diffScans, summarizeDrift, findCaptureProblems, DRIFT_STATUS } from './diff.js';
 
 /**
+ * How far back to look for the last scan that actually captured.
+ *
+ * Bounded rather than unlimited: comparing against evidence months old would narrate drift
+ * that happened long before the current window and attribute it to this cycle.
+ */
+const HISTORY_WALKBACK = 12;
+
+/**
  * Run one monitoring cycle for a single target.
  *
  * @param {string} url
@@ -32,12 +40,21 @@ export async function monitorTarget(url, opts = {}) {
   const { dataRoot, settleMs, keepHistory = 24 } = opts;
   const store = createStore(dataRoot);
 
-  // getLatest returns a stored record that wraps the scan alongside its own metadata, so
-  // unwrap before comparing. Passing the record straight to diffScans silently yields
-  // "not comparable" on every cycle, which reads as a working monitor that never alerts —
-  // the most dangerous kind of failure for a paid monitoring service.
-  const previousRecord = await store.getLatest(url);
-  const previous = previousRecord?.scan ?? null;
+  // Compare against the last scan that actually captured, not merely the last one stored.
+  //
+  // Taking the immediately previous record means comparing against a failed or blocked scan
+  // whenever one occurred, which yields "not comparable" — and the next cycle compares
+  // against that failure too. Every change across the outage is permanently erased and
+  // reported as unchanged, so the drift the client pays for disappears with nothing looking
+  // wrong.
+  //
+  // Records wrap the scan alongside their own metadata, so each has to be unwrapped before
+  // comparison; passing a record straight to diffScans yields "not comparable" every cycle.
+  const history = await store.getHistory(url, { limit: HISTORY_WALKBACK });
+  const previous =
+    (history ?? [])
+      .map((record) => record?.scan ?? record)
+      .find((candidate) => candidate && candidate.capture?.usable !== false) ?? null;
   const scan = await scanConsent(url, settleMs ? { settleMs } : {});
 
   // Persist regardless of outcome. A failed scan is itself a fact worth keeping: a target

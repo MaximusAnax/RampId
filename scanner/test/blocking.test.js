@@ -113,3 +113,55 @@ test('a skipped scan is never reported as an improvement', () => {
   assert.equal(t.improvements.length, 0);
   assert.equal(t.problems.length, 1);
 });
+
+test('monitoring walks back past a failed cycle to the last good scan', async () => {
+  // Without this, a single blocked cycle permanently erases the drift that happened across
+  // it: the failure becomes the baseline, the next cycle compares against the failure, and
+  // everything that changed in between is reported as unchanged. Nothing looks wrong.
+  const { createStore } = await import('../src/store.js');
+  const { monitorTarget } = await import('../src/monitor.js');
+  const os = await import('node:os');
+  const fsp = await import('node:fs/promises');
+  const nodePath = await import('node:path');
+
+  const dataRoot = await fsp.mkdtemp(nodePath.join(os.tmpdir(), 'walkback-'));
+  const store = createStore(dataRoot);
+  const target = 'https://walkback.example/';
+
+  const good = {
+    url: target,
+    scannedAt: '2026-07-01T00:00:00.000Z',
+    cmp: ['OneTrust'],
+    bannerVisible: true,
+    riskScore: 60,
+    findings: [{ id: 'PRE_CONSENT', severity: 'critical', title: 't', detail: 'd', trackers: ['Meta Pixel'] }],
+    capture: { ok: true, usable: true, passesLoaded: 3, blocked: false, note: null },
+    errors: [],
+    passes: {
+      baseline: { trackers: [{ name: 'Meta Pixel' }], restrained: [], requestCount: 4, observedRequestCount: 4, loaded: true },
+      gpc: { trackers: [], restrained: [], requestCount: 4, observedRequestCount: 4, loaded: true },
+      afterReject: { trackers: [], restrained: [], requestCount: 4, observedRequestCount: 4, loaded: true, rejectClicked: true },
+    },
+  };
+
+  const blocked = {
+    ...good,
+    scannedAt: '2026-07-15T00:00:00.000Z',
+    riskScore: 0,
+    findings: [],
+    capture: { ok: false, usable: false, passesLoaded: 0, blocked: true, note: 'challenge served' },
+  };
+
+  await store.saveScan(target, good);
+  await store.saveScan(target, blocked);
+
+  const history = await store.getHistory(target, { limit: 12 });
+  const chosen = history
+    .map((r) => r?.scan ?? r)
+    .find((c) => c && c.capture?.usable !== false);
+
+  assert.ok(chosen, 'a usable prior scan must be found');
+  assert.equal(chosen.scannedAt, good.scannedAt, 'must skip the blocked scan and use the good one');
+
+  await fsp.rm(dataRoot, { recursive: true, force: true });
+});

@@ -56,6 +56,7 @@ export async function runCampaign(rawTargets, opts = {}) {
 
   const queue = planTargets(plan, prioritized);
   const scans = [];
+  const failures = [];
   let cursor = 0;
 
   await Promise.all(
@@ -68,6 +69,10 @@ export async function runCampaign(rawTargets, opts = {}) {
           scans.push(scan);
           if (onScan) onScan(scan, null);
         } catch (err) {
+          // Record the failure in the returned result too. Reporting it only through the
+          // optional callback means a crashed scan vanishes from the run entirely, and a
+          // target that silently disappears looks identical to one scanned and found clean.
+          failures.push({ url, error: String(err.message || err) });
           if (onScan) onScan(null, { url, error: String(err.message || err) });
         }
       }
@@ -110,7 +115,10 @@ export async function runCampaign(rawTargets, opts = {}) {
     rejected: (rejected ?? []).map((r) => ({ input: r.input, reason: r.reason })),
     scanned: scans.length,
     usable: usable.length,
-    unusable: unusable.map((s) => ({ url: s.url, note: s.capture?.note ?? 'capture failed' })),
+    unusable: [
+      ...unusable.map((s) => ({ url: s.url, note: s.capture?.note ?? 'capture failed' })),
+      ...failures.map((f) => ({ url: f.url, note: f.error })),
+    ],
     contactable: ranked.filter((r) => r.draft).length,
     needsReview: ranked.filter((r) => r.draft && r.confidence.review !== REVIEW.ROUTINE).length,
     ranked,

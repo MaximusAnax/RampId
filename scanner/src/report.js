@@ -234,7 +234,13 @@ ${
          identical and mean opposite things.</p>
        </article>`
     : findings.length
-      ? `<h2>What we observed</h2>${findingCards}`
+      ? `<h2>What we observed</h2>${
+          scan.capture && !scan.capture.ok
+            ? `<p class="muted"><strong>Incomplete capture.</strong> ${esc(scan.capture.note)}
+               The observations below stand, but the absence of a finding elsewhere in this
+               report should not be read as its absence on the site.</p>`
+            : ''
+        }${findingCards}`
       : `<h2>What we observed</h2>
          <p class="ok">No pre-consent tracking, opt-out failures, or post-rejection
          transmission were observed on the page tested.</p>
