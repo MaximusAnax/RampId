@@ -3,192 +3,170 @@
 **The product:** continuous, outside-in evidence of what a company's website actually does
 to its visitors — measured from the public internet, requiring nothing from the company.
 
-**The metric this is optimised for:** maximum profit per hour of your time. Not revenue,
-not valuation, not headcount.
+**The metric this is optimised for:** maximum profit per hour of your time.
+
+This plan has been through an adversarial validation pass. Where that pass corrected the
+original thesis, the correction is stated rather than quietly folded in, because the
+corrections are the most useful part of the document.
 
 ---
 
-## 1. The problem, stated precisely
+## 1. The problem
 
 Marketing teams add tracking tags through tag managers without privacy review. Consent
 platforms are configured once and then drift. The result is that a company's website
-transmits data to Meta, TikTok, Google and session-replay vendors *before* the visitor
-consents, *after* they click reject, and while their browser is sending a legally
-recognised opt-out signal.
+transmits data to Meta, TikTok, Google and session-replay vendors before the visitor
+consents, after they click reject, and while their browser is sending a legally recognised
+opt-out signal.
 
 The company cannot see this. Their consent platform reports what they **declared**, not
-what the browser **did**. There is no internal telemetry for "what actually left the page."
-That gap is invisible from the inside and trivially visible from the outside — which is
-the entire commercial opening.
+what the browser **did**. That gap is invisible from the inside and trivially visible from
+the outside.
 
-**Evidence this is widespread, not hypothetical:**
-- The Markup's webXray survey of 7,000+ sites found opt-out non-compliance at
-  "industrial scale."
-- Privado found **48% of top websites** misconfigure Google Consent Mode, sending data to
-  Google Ads after opt-out.
+**Independent evidence it is widespread:** The Markup's webXray survey of 7,000+ sites found
+opt-out non-compliance at "industrial scale," and Privado found 48% of top websites
+misconfigure Google Consent Mode so data flows to Google Ads after opt-out. I am not betting
+that prospects will fail the audit — published surveys already establish that roughly half
+of them do.
 
-I am not betting that prospects will fail the audit. Independent surveys already establish
-that roughly half of them will.
+## 2. What you lead with, and why it is not what I first thought
 
-**Evidence the pain is expensive:**
-- ~3,968 active CIPA cases in California as of end of July 2026, plus 811 in Florida.
-- $5,000 statutory damages per violation, class-certifiable.
-- Hundreds of demand letters weekly; the LA Times settled a class action for $3.85M in
-  June 2026.
-- Session replay is implicated in ~65% of cases.
-- Regulator fines in Q1 2026 alone exceeded $4M: Disney/ABC $2.75M, PlayOn Sports $1.1M,
-  Honda $632,500 for asymmetric opt-out design, Ford $375,703.
+**Lead with CCPA regulations § 7025(c)(6).** Effective 1 January 2026 it changed from "may"
+to "shall": a business that processes an opt-out preference signal **must display** that it
+has done so.
 
-**Critically: this urgency cannot be legislated away.** Between April and July 2026, six
-major compliance deadlines were postponed — EU AI Act high-risk to Dec 2027, HIPAA Security
-to Jul 2027, ADA Title II to 2027/2028, Colorado's AI Act repealed and replaced. Any
-business whose pitch depends on a calendar date is one omnibus bill from having no pitch.
-Private plaintiffs and an active regulator are not on a legislative schedule.
+This is the most commercially useful fact in the domain. It is dated and new, so contacting
+someone about it is legitimate. It is a positive obligation — something the site must
+*show* — so failure is externally observable rather than inferred. It is almost universally
+unmet. And it maps one-to-one onto a pass the scanner already runs.
 
-## 2. Why this specific shape wins on profit-per-hour
+**The original plan led with tracking pixels and CIPA lawsuit counts. That was a mistake,
+and it was the most dangerous mistake in the plan.** An email that opens "we scanned your
+site and here is the tracker that fired after you clicked reject" has the same first
+sentence as the demand letters a handful of volume plaintiff firms send to hundreds of
+brands weekly, using an identical scanning technique. Recipients' counsel have trained them
+to forward those and never reply. The reply rate would have been near zero and it would have
+taken two months to distinguish that from bad copy.
 
-Three structural properties, each of which independently kills most alternatives.
+Same scan, opposite category. That reframing is now built into the product: the outreach
+generator leads with the display requirement, and the regulation citation sits in a sentence
+the length budget cannot drop.
 
-**The diagnosis requires zero client data.** A browser, three page loads, a network
-capture. No credentials, no integration, no BAA, no data processing agreement. This is the
-single most valuable property available, and it is widely misunderstood: **data access, not
-price, is what triggers enterprise security review.** A $9k tool that ingests customer PII
-draws a full vendor security assessment; a $40k engagement that touches nothing often draws
-none. Engineering the data model to be zero-access buys more sales-cycle compression than
-any pricing tactic.
+**The tailwind:** AB 566, signed 8 October 2025, operative 1 January 2027, requires browsers
+to offer an opt-out preference signal. GPC traffic is about to rise sharply, which makes
+mishandling it more expensive over time, not less.
 
-**The lead magnet, the proof of competence, and the first deliverable are one document.**
-Normally these are three separate expensive things. Here the artifact that proves the
-product works *is* the outreach *is* what they pay for. That collapses customer acquisition
-cost toward the cost of compute. For an unknown solo vendor, a true and specific finding
-about the recipient's own business is the only known substitute for a brand.
+## 3. What the validation pass corrected
 
-**It is a drift problem, not a project.** Every new marketing tag re-breaks the
-configuration. A one-time audit is worthless by month three — which is exactly why it
-converts into a monthly monitoring retainer rather than a one-shot fee. This is the
-property that Article 50 compliance lacks and why Article 50 is a wedge rather than the
-business.
-
-Scored against seven alternatives (`research/score.py`), this returns **~$457/hour
-risk-adjusted** versus $97–$247 for the rest. The finding worth sitting with: the two
-*highest-revenue* candidates examined — personal injury demand packages and No Surprises
-Act arbitration, each projecting $600k of year-one revenue — finished **last**, because
-delivery hours scale linearly with clients. Optimising for revenue picks those. Optimising
-for profit-per-hour rejects both.
-
-## 3. What is already built
-
-A working engine, in this repository, with 15 passing tests.
-
-| Component | What it does |
+| The plan said | What is actually true |
 |---|---|
-| `scanner/src/consent.js` | Three-pass capture: baseline, GPC-enabled, post-reject |
-| `scanner/src/trackers.js` | 25 tracker fingerprints + 10 consent platforms, severity-ranked by litigation reality |
-| `scanner/src/report.js` | Standalone HTML evidence report — the deliverable |
-| `scanner/src/scan.js` + `vendors.js` + `disclosure.js` | Article 50 chatbot disclosure module (second regulation, same crawler) |
-| `scanner/test/` | Fixtures and regression tests, including the clean-site false-positive guard |
+| "This urgency cannot be legislated away" | Half wrong. SB 690 would retroactively wipe pending § 638.51 claims filed on or after 1 Jan 2025. But it reaches only §§ 638.50/638.51 — § 631 and § 632.7 private rights survive, and it is operative 1 Jan 2027 at the earliest, not September 2026. |
+| Plaintiffs are the engine | The **regulator** is the engine, and the regulator's obligations are getting *stronger* (may→shall, AB 566) while the litigation side thins. |
+| Sell insurers a risk feed | The slot is taken. LOKKER/Bitsight partnered in March 2025; Coalition and Corvus built it in-house. Entry costs 9–18 months and SOC 2 to arrive second. |
+| Law firms are a channel with revenue share | Law firms are **distribution, not a buyer**, and revenue share is barred. Model Rule 5.4(a) prohibits sharing legal fees with non-lawyers; you paying them creates a Rule 1.7(a)(2) conflict most firms won't paper for a small vendor. |
+| Monitoring at $3,000–6,000/month | Roughly 2–3x too high. Privado's Web Auditor is $600/site/month; Osano Enterprise runs ~$2–3k/month for an entire CMP. |
+| "The maintained tracker corpus is the moat" | It isn't. Consent Mode `gcs` decoding is free in several browser extensions. |
+| Blacklight is the free-tool threat | It isn't. Source-verified: its collector contains no reference to GPC, `Sec-GPC`, `globalPrivacyControl`, `gcs`, or banner interaction. I defended against the wrong tool. |
+| $480k year one | ~$204k at defensible pricing. The headline was about 2.4x optimistic. |
 
-The three-pass method is the core intellectual property:
+**Where the actual differentiation sits.** Not the corpus, and not "the crawler." It is
+narrower and more concrete: LawsuitGuard runs no-action/reject/accept with **no GPC pass**;
+Privisy runs GPC with **no reject click**. Nobody ships all three states. Nobody was found
+adjudicating Meta Limited Data Use. That is a feature gap rather than a moat, and it should
+be treated as a head start to convert into relationships, not as a defensible position.
 
-1. **Baseline** — load, touch nothing. Anything firing here fired before consent existed.
-2. **GPC** — load sending `Sec-GPC: 1` and `navigator.globalPrivacyControl = true`.
-   California regulations effective 1 Jan 2026 require this signal be honoured.
-3. **Reject** — click the banner's own reject control, then record only what follows.
+Note also that LawsuitGuard already hash-seals its output and certifies under FRE 902(13)/(14),
+so the evidence-packaging position is partly taken. Match it or stop claiming it.
 
-Pass 3 produces the most commercially potent finding, because the company built that button
-itself and cannot argue the standard was unfair.
+## 4. Structure and economics
 
-## 4. The crawler is the asset; the regulation is swappable
+**Customer: the scanned company, contracted directly.** Not insurers, not law firms.
 
-The most important architectural decision. The same three-pass browser capture supports:
+**Price:** $7,500 for the assessment. This holds because the comparable is a law firm's
+$5k–$25k fixed-fee audit, not a $199 CMP tier — but only if the deliverable contains human
+analysis and a named methodology. A machine-generated HTML file does not survive the fact
+that a free real-browser GPC scan exists.
 
-- **Pre-consent tracking / opt-out failure** (CIPA, CCPA) — the revenue engine
-- **EU AI Act Article 50** chatbot disclosure — live 2 August 2026, already built
-- **Accessibility** (EAA, ADA) — 3,117 US federal suits in 2025, litigation-driven
+**Monitoring: $1,250–1,500 per domain per month, two-domain floor.** Sold as human-triaged
+regression review plus a monthly attestation, not as a dashboard.
 
-Whichever regulation has the most enforcement heat becomes the thing you lead with. This is
-the hedge against the single biggest risk: California reforming CIPA and mooting module one.
-Build the crawler as the durable asset and treat the statute as a report template.
+**Realistic year one:** 8 clients ≈ $204k gross on roughly 500 founder-hours, and less in
+year one because monitoring starts mid-year. That is still an excellent return per hour. It
+is not $480k.
 
-## 5. Go to market
+**The law-firm relationship, structured correctly:** a nonexclusive, disclosed, *unpaid*
+mutual referral understanding. When an account has a live trigger — demand letter, CPPA or
+AG inquiry, M&A diligence — run that engagement through outside counsel, invoiced to the
+firm and passed through as a disbursement **at actual cost** (ABA Formal Op. 93-379 bars
+surcharging).
 
-**Pricing.** Land at **$7,500** for a one-time forensic assessment. This is deliberately
-below the $25,000 figure in startup folklore, which is a university procurement artifact —
-real corporate no-friction ceilings cluster at $5k–$10k (card caps, manager discretion).
-Expand to **$3,000–$6,000/month** monitoring at renewal, when procurement usually does not
-re-review. Annualised, a retained client is $43k–$79k.
+**Privilege, honestly:** a GC-commissioned scan of your own site is a textbook dual-purpose
+engagement, and the Ninth Circuit — where CIPA litigation lives — applies the strict
+primary-purpose test. Do not promise privilege on untriggered accounts; sell those openly as
+ordinary-course compliance work.
 
-**Sequence.**
+**One rule that costs money to follow and is worth it:** never sell the same account both a
+counsel-routed assessment and a monitoring subscription covering the same scope. The
+subscription contract is the exhibit that destroys privilege over the assessment.
 
-*Weeks 1–2 — build the evidence base.* Scan 300 named companies in two verticals where
-California traffic is heavy and buying is fast: direct-to-consumer retail and digital
-health. Rank by exposure score. This costs compute, not hours, and produces both the market
-map and the pipeline simultaneously.
+## 5. The monitoring archive is a liability as well as an asset
 
-*Weeks 2–4 — publish.* Release an aggregate index ("Pre-Consent Tracking in US Retail,
-2026") naming no individual company. This is press-attractive, it establishes authority
-before any sales conversation, and it makes the subsequent individual outreach read as
-research follow-up rather than a cold pitch.
+A standing weekly scan is the paradigm case of ordinary-course activity — unprivilegeable
+under any structure — and its archive is a dated record of when the company knew and had not
+yet fixed. Two mitigations, both of which should be contractual:
 
-*Weeks 3–8 — outreach on findings, never offers.* One list of 200 named accounts with a
-real finding, never 20,000. This is not frugality; since Microsoft's May 2025 and Google's
-late-2025 bulk-sender enforcement, a spam complaint rate above 0.3% causes outright
-rejection rather than spam-foldering. Volume is capped by policy. The first message
-contains a true, specific, checkable fact about the recipient's own site.
+- 90-day rolling retention on raw captures.
+- A remediation-status field on every finding, so the archive documents *fixing* rather than
+  *knowing*.
 
-*Month 3 onward — the channel, which is where the metric actually improves.* Privacy
-counsel are the ideal partner: they have the client relationships, they are asked about this
-constantly, and they **cannot produce the technical evidence themselves** — they bill
-$600–900/hr to read someone else's scan. Selling through ten firms means solving
-trust-transfer ten times instead of three hundred. Partner-sourced deals close roughly 38%
-faster with a materially higher win rate. Expect to concede 30–50% of economics; take it,
-because you are buying distribution you cannot otherwise afford.
+## 6. The biggest remaining threat
 
-**Year-one target:** 8 clients, ~$480k revenue, ~508 founder-hours.
+**Not commoditization and not SB 690. It is that outreach converts at zero because it is
+formally indistinguishable from a demand letter.** Delivery is nearly free here; distribution
+*is* the business.
 
-## 6. Positioning rules, which are not optional
+Three things de-risk it, in order:
 
-These are the difference between a vendor and a nuisance.
+1. **Publish the sector index first, as a hard gate.** It must exist and be public — ideally
+   cited once by counsel or press — *before* any named outreach. That converts the email from
+   a threat into research follow-up. This moves from "weeks 2–4" to a precondition.
+2. **Route to the operator, not to Legal.** Send to whoever owns the tag stack: Director of
+   Marketing Ops, Web Analytics, Privacy Ops. They can verify the finding in five minutes,
+   they are personally embarrassed by it, and they are not conflict-checking you. Legal is the
+   function trained to forward this to litigation counsel.
+3. **Lead with § 7025(c)(6)**, per section 2.
 
-1. **Never state a legal conclusion.** "This request was sent to facebook.com/tr before any
-   consent interaction" — never "you are violating CIPA." Stating legal exposure is
-   unauthorized practice of law, and it is also what makes recipients hire lawyers to fight
-   you rather than hire you to fix it.
-2. **Lead with remediation, not accusation.** The reader should finish the report knowing
-   what to change on Monday.
-3. **Make the evidence checkable in five minutes.** Raw request URLs, named endpoints. An
-   engineer who can verify it will act on it; one who cannot will dismiss it.
-4. **Never sell "AI."** After MIT's finding that ~95% of enterprise GenAI pilots produced no
-   measurable P&L impact, "AI-powered" is a negative credibility signal to a 2026 buyer.
-   Sell the observed finding.
-5. **Refer the legal question out.** Always to counsel. This is both correct and the thing
-   that makes counsel want to partner with you.
+## 7. Week one: five falsifying tests before any real time is spent
 
-## 7. Risks, honestly
+1. **Run the scanner against 300–500 live domains.** Everything downstream is conditional on
+   numbers never measured. Measure four: share transmitting to a third party after a reject
+   click; share ignoring GPC; share with no reject control; and false-positive rate against
+   20 sites hand-verified as clean.
+   **Decision rules, set now:** if post-reject failure is under 20%, the reject hook is not a
+   business and the GPC pass leads instead. If false positives exceed 2%, send zero emails
+   until it is fixed.
+2. **Count how many display the § 7025(c)(6) confirmation.** The prediction is near zero. If
+   that holds, it is the lead finding and it is dated, machine-checkable and universal.
+3. **Diff against Privisy's free scan and LOKKER's Consent Validator** on five of your own
+   targets. Know exactly what you show that free tools do not.
+4. **Get one privacy lawyer to read the report** and tell you what they would strike.
+5. **Confirm the referral structure with a lawyer** before approaching any firm.
 
-| Risk | Severity | Response |
-|---|---|---|
-| **Reading as a demand-letter mill.** Unsolicited "we found violations" mail at scale puts you in the mental category of serial plaintiffs your buyers resent. | **Highest** | Factual framing only; remediation-first; publish research before outreach so you arrive as a researcher, not a hunter. |
-| **Unauthorized practice of law.** | High | Never conclude on liability; counsel partnerships from month one; explicit scope limitation in every report (already in the template). |
-| **CIPA reform.** Bills to curb website-tracking claims have circulated since 2025. | High | The crawler is regulation-agnostic by design. Article 50 and accessibility modules are the hedge, and one is already built. |
-| **False positives.** One audit accusing a compliant company destroys the credibility the whole motion runs on. | High | Engine resolves ambiguity to "needs review," never "violation." The clean-fixture test is the guard, and it is asserted first. |
-| **Commoditization.** Scanning is not hard; someone will ship a free tool. | Medium | The moat is not detection, it is the maintained tracker corpus, the evidence framing that survives a lawyer reading it, and the counsel relationships. Move to retainers fast. |
-| **Buyer fixes it themselves after one report.** | Medium | Real, and the reason the business is monitoring rather than audits. Price the first assessment as customer acquisition, not as the product. |
+## 8. What is already built
 
-## 8. What has not been validated yet
+A working engine in this repository, 249 passing tests. Three-pass capture, hybrid
+classification over a curated corpus plus 2,142 MIT-licensed entities, consent-signal
+decoding, § 7025(c)(6) detection, drift monitoring, outreach drafting with a banned-phrase
+guard enforced in code, an anonymised sector index, and a one-command campaign runner.
 
-Stating this plainly, because a plan that hides its unknowns is a pitch, not a plan.
+**Not yet validated against live websites** — the sandbox blocks arbitrary egress. That is
+task one above, and the whole plan is downstream of it.
 
-**The engine has been validated against controlled fixtures, not live websites.** This
-sandbox's egress policy blocks arbitrary hosts, so the detection logic is proven — correct
-findings on the leaky fixture, zero false positives on the clean one — but the real-world
-hit rate is inferred from the webXray and Privado surveys rather than measured directly.
+## 9. Where I would bet on the genuinely ambiguous question
 
-**The first thing to do outside this environment**, before writing a line of outreach, is to
-run `node cli.js consent` against 100 real domains. That single run answers the only
-question that matters: what fraction of real companies actually fail, and how noisy is the
-detector against real consent platforms. If the failure rate is near the ~48% the published
-surveys imply, the plan holds. If it is 5%, the market is too thin and the Article 50 or
-accessibility module should lead instead.
+Nobody verified whether regulator-driven demand converts at all. My bet: it converts
+**slower but better** — a 2–3x longer sales cycle, a buyer with a standing budget line
+rather than a one-time panic, and materially better retention, because a compliance
+obligation recurs and a demand letter does not.
 
-Everything else in this plan is downstream of that measurement.
+Plan cash for the longer cycle. That is the trade being made, and it is the right one.
