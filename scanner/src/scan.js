@@ -49,14 +49,16 @@ export async function scanSite(url, opts = {}) {
     durationMs: 0,
   };
 
-  // This sandbox routes egress through an inspecting proxy that re-signs TLS. Chromium
-  // needs to be pointed at it explicitly and told to trust the substituted certificate,
-  // otherwise every navigation dies with ERR_TUNNEL_CONNECTION_FAILED.
-  const proxyServer = process.env.HTTPS_PROXY || process.env.https_proxy || null;
+  // Proxy is opt-in, matching consent.js. Routing through an intercepting proxy that
+  // re-signs TLS breaks sub-resource loading badly enough that pages render empty and
+  // every widget looks absent — a silent false negative, the worst failure mode here.
+  const proxyServer = process.env.A50_PROXY || null;
 
   const browser = await chromium.launch({
     headless,
-    ...(proxyServer ? { proxy: { server: proxyServer } } : {}),
+    ...(proxyServer
+      ? { proxy: { server: proxyServer, bypass: '127.0.0.1,localhost' } }
+      : {}),
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
   });
   const context = await browser.newContext({
