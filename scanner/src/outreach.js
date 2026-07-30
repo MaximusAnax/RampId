@@ -16,9 +16,9 @@ import { findCaptureProblems } from './diff.js';
  *      endpoint, and which of the three passes it appeared in. Never a greeting, never
  *      credentials, never a value proposition. A generic opening is the signal a reader uses
  *      to sort mail into bulk, and they use it before sentence two.
- *   2. Six sentences, hard cap — three in brief tone. assertSentenceBudget enforces it after
- *      assembly, so a future template that quietly grows fails the test suite instead of the
- *      recipient's patience.
+ *   2. Six sentences, hard cap — three in brief tone, four where a required caveat has to
+ *      survive. assertSentenceBudget enforces it after assembly, so a future template that
+ *      quietly grows fails the test suite instead of the recipient's patience.
  *   3. No legal conclusion, no pressure, no invented proof. assertFactualCopy runs over every
  *      generated string, including the subject line and every entry in plainFacts. One
  *      accusatory email reframes the sender as a demand-letter mill — the highest-severity
@@ -543,6 +543,14 @@ export function generateOutreach(scan, options = {}) {
   const copy = variant(ctx);
   const foldScope = ctx.tone.foldScopeIntoAsk;
 
+  // A required caveat is never traded away for brevity. It is the sentence that keeps a
+  // negative observation from reading as a claim, so the shortest tone buys one extra
+  // sentence rather than dropping it — still well inside the six-sentence ceiling.
+  const maxSentences = Math.min(
+    MAX_BODY_SENTENCES,
+    ctx.tone.maxSentences + (copy.caveat ? 1 : 0)
+  );
+
   const items = fitToBudget(
     [
       { group: 'observation', text: copy.lead, optional: false, priority: 0 },
@@ -560,7 +568,7 @@ export function generateOutreach(scan, options = {}) {
       },
       { group: 'scope', text: foldScope ? null : SCOPE_SENTENCE, optional: false, priority: 0 },
     ],
-    ctx.tone.maxSentences
+    maxSentences
   );
 
   const paragraphs = paragraphsFrom(items, ['observation', 'verify', 'ask', 'scope']);
@@ -574,7 +582,7 @@ export function generateOutreach(scan, options = {}) {
 
   // The budget is asserted on the prose, before the signature is attached. A sender's name is
   // not something the template controls and must never be able to fail generation.
-  assertSentenceBudget(paragraphs.join(' '), ctx.tone.maxSentences, 'outreach body');
+  assertSentenceBudget(paragraphs.join(' '), maxSentences, 'outreach body');
 
   if (senderName) paragraphs.push(`— ${senderName}`);
   const body = paragraphs.join('\n\n');
