@@ -137,9 +137,14 @@ export async function scanConsent(url, opts = {}) {
 
     const findings = buildFindings({ A, B, C, reject, consentPlatforms, bannerVisible });
 
-    // A pass that loaded anything at all records more than the bare navigation attempt.
-    // A failed navigation still registers one request, so the threshold is above one.
-    const passLoaded = (p) => !p.error && (p.observedRequestCount ?? 0) > 1;
+    // Navigation failure is the reliable signal, not request volume.
+    //
+    // Counting requests looks tempting but is wrong in both directions: a failed navigation
+    // still registers one request, and a genuinely clean page with no third-party resources
+    // also registers exactly one. Thresholding on the count therefore marked clean sites as
+    // failed scans — which in monitoring would have meant the best-behaved clients were
+    // silently skipped forever.
+    const passLoaded = (p) => !p.error && (p.observedRequestCount ?? 0) >= 1;
     const loadedPasses = [baseline, gpc, reject].filter(passLoaded).length;
     const capture = {
       ok: loadedPasses === 3,
