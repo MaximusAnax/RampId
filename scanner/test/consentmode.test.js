@@ -359,11 +359,40 @@ test('a Global Privacy Control flag inside a GPP string is recognised as a denia
 });
 
 test('a GPP section whose layout is not verified is reported present but undecoded', () => {
-  // Virginia (section 9) has its own field order. Reading it with another section's
-  // offsets would produce a confident wrong answer, so it is left alone.
-  const url = `https://ct.pinterest.com/v3/?gpp=${gppString(7, uscaSection({ saleOptOut: 2 }))}&gpp_sid=7`;
-  const detected = detectPrivacyStrings(url.replace('gpp_sid=7', 'gpp_sid=9'));
+  // Virginia (section 9) has its own field order. Reading it with California's offsets
+  // would produce a confident wrong answer, so the section is named and left alone.
+  const url = `https://ct.pinterest.com/v3/?gpp=${gppString(9, uscaSection({ saleOptOut: 1 }))}&gpp_sid=9`;
+  const parsed = parseConsentSignals(url);
+
+  assert.deepEqual(parsed.signals.gpp.sectionNames, ['usva']);
+  assert.equal(parsed.signals.gpp.sections.usva.decoded, false);
+  assert.equal(parsed.consentDenied, null, 'an undecoded section must not produce a verdict');
+  assert.equal(
+    assessTrackerRequest(url, { name: 'Pinterest Tag', category: 'ad-pixel' }).status,
+    CONSENT_STATUS.UNKNOWN
+  );
+});
+
+test('the presence detector reports unreadable framework strings rather than dropping them', () => {
+  // A CMP emitting a malformed string looks identical to a site with no framework at all
+  // unless presence is tracked separately from decodability.
+  const detected = detectPrivacyStrings(
+    'https://ads.example.net/px?gdpr=1&gdpr_consent=broken&gpp=broken&us_privacy=broken'
+  );
+
+  assert.equal(detected.tcf.present, true);
+  assert.equal(detected.tcf.decoded, false);
   assert.equal(detected.gpp.present, true);
+  assert.equal(detected.gpp.decoded, false);
+  assert.equal(detected.usPrivacy.present, true);
+  assert.equal(detected.usPrivacy.decoded, false);
+  assert.equal(detected.gdprApplies, true);
+
+  const clean = detectPrivacyStrings('https://static.hotjar.com/c/hotjar-1.js');
+  assert.deepEqual(
+    [clean.usPrivacy, clean.gpp, clean.tcf, clean.gdprApplies],
+    [null, null, null, null]
+  );
 });
 
 // ---------------------------------------------------------------------------

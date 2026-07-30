@@ -137,6 +137,22 @@ export async function scanConsent(url, opts = {}) {
 
     const findings = buildFindings({ A, B, C, reject, consentPlatforms, bannerVisible });
 
+    // A pass that loaded anything at all records more than the bare navigation attempt.
+    // A failed navigation still registers one request, so the threshold is above one.
+    const passLoaded = (p) => !p.error && (p.observedRequestCount ?? 0) > 1;
+    const loadedPasses = [baseline, gpc, reject].filter(passLoaded).length;
+    const capture = {
+      ok: loadedPasses === 3,
+      passesLoaded: loadedPasses,
+      usable: loadedPasses > 0,
+      note:
+        loadedPasses === 3
+          ? null
+          : loadedPasses === 0
+            ? 'The page could not be loaded. No conclusion can be drawn from this scan.'
+            : `Only ${loadedPasses} of 3 passes loaded successfully. Findings are incomplete.`,
+    };
+
     return {
       url,
       scannedAt: new Date().toISOString(),
@@ -154,6 +170,13 @@ export async function scanConsent(url, opts = {}) {
       },
       findings,
       riskScore: score(findings),
+      // Whether the scan can support any conclusion at all.
+      //
+      // Without this, a site that never loaded returns zero findings, and zero findings
+      // renders as a clean bill of health. Handing a client "no issues found" for a page
+      // that failed to load is worse than handing them nothing, and it is not a failure
+      // they could detect from the report.
+      capture,
       errors: [baseline.error, gpc.error, reject.error].filter(Boolean),
     };
   } finally {

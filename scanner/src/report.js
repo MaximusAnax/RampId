@@ -168,7 +168,28 @@ export function renderReport(scan, { company = null } = {}) {
 <code>${esc(scan.url)}</code>. It was produced entirely from the public site. No access to
 your systems, accounts, or data was used or required.</p>
 
-${findings.length ? `<h2>What we observed</h2>${findingCards}` : '<h2>What we observed</h2><p class="ok">No pre-consent tracking, opt-out failures, or post-rejection transmission were observed.</p>'}
+${
+  scan.capture && !scan.capture.usable
+    ? `<h2>This scan did not complete</h2>
+       <article class="finding" style="background:#fff7ed;border-color:#fed7aa">
+         <div class="sev" style="color:#c2410c">Inconclusive</div>
+         <h3>${esc(scan.capture.note)}</h3>
+         <p>No finding, and no absence of findings, should be read from this report. The page
+         was not successfully loaded, so nothing was measured. This is stated rather than
+         presented as a clean result, because an empty result and a clean result look
+         identical and mean opposite things.</p>
+       </article>`
+    : findings.length
+      ? `<h2>What we observed</h2>${findingCards}`
+      : `<h2>What we observed</h2>
+         <p class="ok">No pre-consent tracking, opt-out failures, or post-rejection
+         transmission were observed on the page tested.</p>
+         ${
+           scan.capture && !scan.capture.ok
+             ? `<p class="muted">${esc(scan.capture.note)}</p>`
+             : ''
+         }`
+}
 
 <h2>Method</h2>
 <p class="muted">Three independent page loads, each with a clean browser profile.</p>

@@ -188,3 +188,22 @@ test('one unsignalled request makes a service reportable', () => {
   assert.equal(r.reportable.length, 1);
   assert.equal(r.restrained.length, 0);
 });
+
+test('a scan that could not load the page reports capture failure, not a clean result', async () => {
+  // An empty result and a clean result look identical and mean opposite things. Handing a
+  // client "no issues found" for a page that never loaded is worse than handing them
+  // nothing, because it is a failure they cannot detect from the report.
+  const scan = await scanConsent('http://127.0.0.1:1/never-listening.html', { settleMs: 400 });
+
+  assert.equal(scan.capture.usable, false);
+  assert.equal(scan.capture.passesLoaded, 0);
+  assert.ok(scan.capture.note, 'capture failure must explain itself');
+  assert.deepEqual(scan.findings, [], 'a failed scan must not invent findings either');
+});
+
+test('a successful scan reports healthy capture across all three passes', async () => {
+  const scan = scans['onetrust-like'];
+  assert.equal(scan.capture.ok, true);
+  assert.equal(scan.capture.passesLoaded, 3);
+  assert.equal(scan.capture.note, null);
+});
