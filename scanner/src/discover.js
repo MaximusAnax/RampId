@@ -77,10 +77,20 @@ export const PUBLIC_SUFFIXES = new Set([
   'herokuapp.com', 'azurewebsites.net', 'cloudfront.net',
 ]);
 
-/** Longest suffix this table models. Bounds the candidate loop below. */
+/** Longest suffix the embedded table models. A caller-supplied suffix widens it. */
 const MAX_SUFFIX_LABELS = 3;
 
 const IPV4_PATTERN = /^\d{1,3}(\.\d{1,3}){3}$/;
+
+/**
+ * One label of a hostname. Checked per label rather than with one expression over the whole
+ * host so the cost stays linear in the length of an input this module does not control.
+ */
+const HOSTNAME_LABEL_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+
+const isPlausibleHostname = (host) =>
+  host.length <= 253 &&
+  host.split('.').every((label) => label.length <= 63 && HOSTNAME_LABEL_PATTERN.test(label));
 
 /**
  * Split a hostname into its public suffix and the registrable domain that identifies one
@@ -95,12 +105,18 @@ export function registrableDomainOf(hostname, { extraPublicSuffixes = [] } = {})
     ? new Set([...PUBLIC_SUFFIXES, ...extraPublicSuffixes.map((s) => String(s).toLowerCase())])
     : PUBLIC_SUFFIXES;
 
+  // A caller-supplied suffix longer than the embedded table's longest would otherwise never be
+  // reached by the loop below, and the miss would be silent.
+  const maxSuffixLabels = extraPublicSuffixes.length
+    ? Math.max(MAX_SUFFIX_LABELS, ...extraPublicSuffixes.map((s) => String(s).split('.').length))
+    : MAX_SUFFIX_LABELS;
+
   const labels = host.split('.');
   let suffixLabelCount = 1;
   // The candidate loop runs up to the full label count, not one short of it. A hostname that
   // is itself a public suffix ("co.uk", "myshopify.com") has to be recognised as such, or it
   // becomes a registrable domain and a whole hosting platform turns into one prospect.
-  for (let length = Math.min(MAX_SUFFIX_LABELS, labels.length); length >= 2; length--) {
+  for (let length = Math.min(maxSuffixLabels, labels.length); length >= 2; length--) {
     if (suffixes.has(labels.slice(-length).join('.'))) {
       suffixLabelCount = length;
       break;
@@ -189,6 +205,10 @@ export function normalizeTarget(input, options = {}) {
     return rejectTarget(input, 'IP address, which identifies no company');
   }
   if (!hostname.includes('.')) return rejectTarget(input, 'not a public hostname');
+  // A host with an empty or malformed label ("a..b.com") resolves nowhere, and it carries a
+  // registrable domain, so left alone it folds a junk row into a real company's target and
+  // shows up in the operator's list as one of that company's hostnames.
+  if (!isPlausibleHostname(hostname)) return rejectTarget(input, 'not a well-formed hostname');
 
   const { registrableDomain, publicSuffix } = registrableDomainOf(hostname, { extraPublicSuffixes });
   if (!registrableDomain) {
@@ -376,14 +396,23 @@ export function dedupe(targets, options = {}) {
   for (const target of asTargets(targets, options)) {
     const existing = byKey.get(target.key);
     if (!existing) {
-      byKey.set(target.key, { ...target, aliases: [], mergedCount: 1 });
+      // Seeded from the incoming record rather than reset to empty, so folding a fresh list
+      // into an already-deduplicated one keeps the history of what was merged. Resetting here
+      // would quietly drop hostnames the operator has already been shown.
+      byKey.set(target.key, {
+        ...target,
+        aliases: [...(target.aliases ?? [])],
+        mergedCount: Number(target.mergedCount) || 1,
+      });
       continue;
     }
 
-    if (target.hostname !== existing.hostname && !existing.aliases.includes(target.hostname)) {
-      existing.aliases.push(target.hostname);
+    for (const alias of [target.hostname, ...(target.aliases ?? [])]) {
+      if (alias && alias !== existing.hostname && !existing.aliases.includes(alias)) {
+        existing.aliases.push(alias);
+      }
     }
-    existing.mergedCount++;
+    existing.mergedCount += Number(target.mergedCount) || 1;
 
     // First non-empty value wins, matching the "first occurrence is intentional" rule above.
     // Nothing is averaged or maximised: a prior risk score belongs to one hostname's scan,
@@ -696,7 +725,9 @@ export function prioritize(targets, options = {}) {
     return {
       ...target,
       priority: {
-        score: round((rawScore / maxScore) * 100),
+        // A weight set that can award no points at all would divide by zero here and put NaN
+        // into the sort comparator, which silently randomises the whole queue.
+        score: maxScore > 0 ? round((rawScore / maxScore) * 100) : 0,
         rawScore: round(rawScore),
         maxScore: round(maxScore),
         // How much of the ranking rests on measured signals rather than defaults. Two targets
@@ -769,9 +800,9 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
  * Two guarantees the plan provides:
  *
  *   1. No registrable domain is scanned again until `perHostDelayMs` has elapsed since the
- *      previous scan of that domain finished. Where a target carries a robots.txt
- *      crawl-delay (see `annotateWithRobots`), the larger of the two is used — the site's
- *      own stated preference is never narrowed.
+ *      previous scan of that domain finished, including across the boundary between two
+ *      days. Where a target carries a robots.txt crawl-delay (see `annotateWithRobots`), the
+ *      larger of the two is used — the site's own stated preference is never narrowed.
  *   2. No day contains more than `dailyCap` targets.
  *
  * When the highest-priority remaining target is still inside its host's cooling-off window
@@ -786,15 +817,26 @@ export function buildScanPlan(targets, options = {}) {
   const scanMs = Math.max(1, settings.estimatedScanDurationMs);
 
   const startDate = options.startDate ? new Date(options.startDate) : new Date();
+  if (Number.isNaN(startDate.getTime())) {
+    // Caught here rather than thrown from a toISOString() call four functions deeper, where
+    // the message names neither the option nor the value the operator actually mistyped.
+    throw new TypeError(
+      `buildScanPlan: startDate ${JSON.stringify(options.startDate)} is not a valid date`
+    );
+  }
   const ordered = asTargets(targets, options);
 
   const days = [];
   let order = 0;
+  // Carried between days so a domain scanned late on one day is still cooling off at the start
+  // of the next. Offsets are relative to the day being scheduled, so they are rebased by one
+  // day after each pass and dropped once they fall into the past.
+  const hostFreeAt = new Map();
 
   for (let dayIndex = 0; dayIndex * dailyCap < ordered.length; dayIndex++) {
     const dayTargets = ordered.slice(dayIndex * dailyCap, (dayIndex + 1) * dailyCap);
     const dayStart = new Date(startDate.getTime() + dayIndex * MS_PER_DAY);
-    const items = scheduleDay(dayTargets, { maxConcurrent, perHostDelayMs, scanMs }).map((item) => ({
+    const items = scheduleDay(dayTargets, { maxConcurrent, perHostDelayMs, scanMs, hostFreeAt }).map((item) => ({
       ...item,
       day: dayIndex + 1,
       order: ++order,
@@ -805,6 +847,12 @@ export function buildScanPlan(targets, options = {}) {
     }));
 
     days.push({ day: dayIndex + 1, startAt: dayStart.toISOString(), items });
+
+    for (const [key, freeAt] of hostFreeAt) {
+      const rebased = freeAt - MS_PER_DAY;
+      if (rebased > 0) hostFreeAt.set(key, rebased);
+      else hostFreeAt.delete(key);
+    }
   }
 
   // Items are ordered by start time, and the last one to start is not always the last one to
@@ -828,9 +876,12 @@ export function buildScanPlan(targets, options = {}) {
   };
 }
 
-function scheduleDay(targets, { maxConcurrent, perHostDelayMs, scanMs }) {
+/**
+ * Lay out one day's work. `hostFreeAt` is supplied by the caller and mutated in place: it is
+ * how a cooling-off window survives the end of a day.
+ */
+function scheduleDay(targets, { maxConcurrent, perHostDelayMs, scanMs, hostFreeAt }) {
   const workerFreeAt = new Array(Math.min(maxConcurrent, targets.length || 1)).fill(0);
-  const hostFreeAt = new Map();
   const pending = [...targets];
   const scheduled = [];
 
@@ -961,11 +1012,50 @@ export function parseRobots(body) {
   return { groups, sitemaps };
 }
 
-function patternToRegExp(pattern) {
+/**
+ * Match a robots.txt path pattern, without building a regular expression from it.
+ *
+ * A regex assembled from `*` wildcards backtracks catastrophically on input this module does
+ * not control: two dozen wildcards in one `Disallow` line, against a path of a few dozen
+ * characters, takes longer than the heat death of the run. That file is fetched from every
+ * prospect, so a single hostile or merely elaborate robots.txt would hang an overnight batch
+ * with no error and no partial results. The two-pointer walk below is bounded by pattern
+ * length times path length.
+ *
+ * Semantics follow the standard: a pattern matches a prefix of the path unless it ends in
+ * `$`, which anchors it to the whole path. Every other character is literal, including the
+ * regex metacharacters the previous implementation had to escape.
+ */
+function pathMatchesPattern(pattern, path) {
   const anchored = pattern.endsWith('$');
-  const body = anchored ? pattern.slice(0, -1) : pattern;
-  const escaped = body.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*');
-  return new RegExp(`^${escaped}${anchored ? '$' : ''}`);
+  // Prefix matching is the same thing as a full match against the pattern plus a trailing
+  // wildcard, which lets one loop cover both cases.
+  const expression = anchored ? pattern.slice(0, -1) : `${pattern}*`;
+
+  let patternIndex = 0;
+  let pathIndex = 0;
+  let lastWildcardIndex = -1;
+  let resumeIndex = 0;
+
+  while (pathIndex < path.length) {
+    if (expression[patternIndex] === '*') {
+      lastWildcardIndex = patternIndex++;
+      resumeIndex = pathIndex;
+    } else if (patternIndex < expression.length && expression[patternIndex] === path[pathIndex]) {
+      patternIndex++;
+      pathIndex++;
+    } else if (lastWildcardIndex !== -1) {
+      // Give the most recent wildcard one more character and retry from there. Only the last
+      // wildcard is ever reconsidered, which is what keeps this linear rather than exponential.
+      patternIndex = lastWildcardIndex + 1;
+      pathIndex = ++resumeIndex;
+    } else {
+      return false;
+    }
+  }
+
+  while (expression[patternIndex] === '*') patternIndex++;
+  return patternIndex === expression.length;
 }
 
 /**
@@ -1000,7 +1090,7 @@ export function isPathAllowed(parsed, path, userAgent = DEFAULT_ROBOTS_AGENT) {
   let best = null;
   for (const group of applicable) {
     for (const rule of group.rules) {
-      if (!patternToRegExp(rule.pattern).test(target)) continue;
+      if (!pathMatchesPattern(rule.pattern, target)) continue;
       if (
         !best ||
         rule.pattern.length > best.pattern.length ||
@@ -1092,7 +1182,7 @@ export async function checkRobots(url, options = {}) {
     };
   }
 
-  const { status, body, truncated } = response;
+  const { status, body, truncated, contentEncoding } = response;
 
   if (status === 404 || status === 410) {
     return {
@@ -1124,6 +1214,21 @@ export async function checkRobots(url, options = {}) {
       allowed: false,
       certain: false,
       reason: `robots.txt exceeded ${MAX_ROBOTS_BYTES} bytes and was not read in full`,
+    };
+  }
+
+  // A compressed body decoded as text parses into no rules at all, and a file with no rules
+  // means "allowed". Left unchecked, a `Disallow: /` from an origin that gzips unconditionally
+  // would read as unrestricted permission, which is the one direction this function must never
+  // fail in. Undetermined keeps the target retryable instead.
+  if (contentEncoding && !/^identity$/i.test(contentEncoding)) {
+    return {
+      ...base,
+      fetched: true,
+      status,
+      allowed: false,
+      certain: false,
+      reason: `robots.txt was returned as ${contentEncoding} despite an identity request and could not be read`,
     };
   }
 
@@ -1159,9 +1264,18 @@ function fetchText(url, { timeoutMs, maxRedirects, fetchUserAgent }, redirectsFo
 
     const request = client.get(
       url,
-      { headers: { 'user-agent': fetchUserAgent, accept: 'text/plain, */*' } },
+      {
+        headers: {
+          'user-agent': fetchUserAgent,
+          accept: 'text/plain, */*',
+          // Asked for explicitly because the body is read as text and never decompressed.
+          // Node sends no accept-encoding of its own, which most servers read as "anything".
+          'accept-encoding': 'identity',
+        },
+      },
       (response) => {
         const status = response.statusCode ?? 0;
+        const contentEncoding = response.headers['content-encoding'] ?? null;
 
         if (status >= 300 && status < 400 && response.headers.location) {
           response.resume();
@@ -1187,9 +1301,9 @@ function fetchText(url, { timeoutMs, maxRedirects, fetchUserAgent }, redirectsFo
             response.destroy();
           }
         });
-        response.on('end', () => resolve({ status, body, truncated }));
+        response.on('end', () => resolve({ status, body, truncated, contentEncoding }));
         response.on('close', () => {
-          if (truncated) resolve({ status, body, truncated });
+          if (truncated) resolve({ status, body, truncated, contentEncoding });
         });
         response.on('error', reject);
       }

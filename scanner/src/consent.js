@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import { worstSeverity, SEVERITY_RANK } from './trackers.js';
 import { classifyAll } from './entities.js';
 import { detectConsentPlatform, clickReject } from './cmp.js';
+import { detectOptOutDisplay, optOutDisplayFinding } from './optoutdisplay.js';
 
 /**
  * Three-pass consent evidence capture.
@@ -73,6 +74,10 @@ async function runPass(browser, url, { gpc = false, clickReject: doReject = fals
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 40000 });
 
     pass.consent = await detectConsentPlatform(page, []);
+
+    // Only meaningful on the GPC pass: the obligation is to display that a signal was
+    // processed, and no signal is sent on the other passes.
+    if (gpc) pass.optOutDisplay = await detectOptOutDisplay(page);
 
     if (doReject) {
       await page.waitForTimeout(Math.min(3500, settleMs));
@@ -166,6 +171,18 @@ export async function scanConsent(url, opts = {}) {
 
     const findings = buildFindings({ A, B, C, reject, consentPlatforms, bannerVisible });
 
+    // Gated on evidence that the site actually shares with third parties at all — across
+    // any pass, since a tag suppressed under GPC still shows the site is in the business of
+    // sharing. Without that evidence the display obligation may simply not attach.
+    const observedThirdPartySharing =
+      A.trackers.length > 0 || B.trackers.length > 0 || C.trackers.length > 0;
+
+    const optOut = optOutDisplayFinding(gpc.optOutDisplay, {
+      gpcHonoured: B.reportable.length === 0,
+      sharesWithThirdParties: observedThirdPartySharing,
+    });
+    if (optOut) findings.push(optOut);
+
     // Navigation failure is the reliable signal, not request volume.
     //
     // Counting requests looks tempting but is wrong in both directions: a failed navigation
@@ -193,6 +210,7 @@ export async function scanConsent(url, opts = {}) {
       durationMs: Date.now() - started,
       cmp: consentPlatforms,
       bannerVisible,
+      optOutDisplay: gpc.optOutDisplay ?? null,
       passes: {
         baseline: summarise(A, baseline),
         gpc: summarise(B, gpc),

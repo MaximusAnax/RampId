@@ -16,6 +16,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import zlib from 'node:zlib';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -120,6 +121,24 @@ test('a bad row does not discard the rest of the list', () => {
   assert.equal(rejected.length, 1);
 });
 
+test('a hostname with an empty label is rejected rather than folded into a real company', () => {
+  // "a..b.com" resolves nowhere, but it carries the registrable domain b.com, so accepting it
+  // would attach a junk row to a genuine prospect and show up as one of its hostnames.
+  for (const bad of ['a..b.com', '..example.com', 'example..com', '-example.com', 'example-.com']) {
+    assert.equal(normalizeTarget(bad).ok, false, `expected ${bad} to be rejected`);
+  }
+  assert.equal(normalizeTarget('brand-one.myshopify.com').ok, true, 'hyphens inside a label are fine');
+});
+
+test('a caller-supplied suffix with more labels than the built-in table still applies', () => {
+  // The built-in table tops out at three labels. A longer suffix passed by a caller has to
+  // widen the search, or it is accepted and then silently never matched.
+  const t = normalizeTarget('store.brand.shops.eu.example-platform.net', {
+    extraPublicSuffixes: ['shops.eu.example-platform.net'],
+  });
+  assert.equal(t.key, 'brand.shops.eu.example-platform.net');
+});
+
 test('registrableDomainOf handles single and multi-part suffixes', () => {
   assert.equal(registrableDomainOf('a.b.example.com').registrableDomain, 'example.com');
   assert.equal(registrableDomainOf('a.b.example.co.uk').registrableDomain, 'example.co.uk');
@@ -214,6 +233,19 @@ test('deduplication fills gaps from the rows it folded in', () => {
   assert.equal(merged.signals.revenue, '$60M', 'and gains what it was missing');
 });
 
+test('deduplicating an already-deduplicated list keeps what it folded in', () => {
+  // Two lists get merged constantly — a new export against last month's worked list — and a
+  // second pass that reset the merge history would silently drop hostnames the operator has
+  // already been shown.
+  const first = dedupe(['shop.example.com', 'www.example.com']);
+  const again = dedupe([...first, 'example.com/careers']);
+
+  assert.equal(again.length, 1);
+  assert.equal(again[0].url, 'https://shop.example.com/', 'first seen still wins');
+  assert.deepEqual(again[0].aliases, ['www.example.com', 'example.com']);
+  assert.equal(again[0].mergedCount, 3);
+});
+
 /* ---------------------------------------------------------------- *
  * Prioritisation
  * ---------------------------------------------------------------- */
@@ -300,6 +332,22 @@ test('ranking language never characterises a company as being in breach', () => 
   }
 });
 
+test('a weight set that can award no points does not poison the ordering', () => {
+  // A score of NaN compares false against everything, which does not fail loudly — it just
+  // returns the queue in an arbitrary order that changes between runs.
+  const flat = prioritize(['b-example.com', 'a-example.com'], {
+    weights: {
+      revenueBand: Object.fromEntries(Object.keys(DEFAULT_PRIORITY_WEIGHTS.revenueBand).map((k) => [k, 0])),
+      sector: Object.fromEntries(Object.keys(DEFAULT_PRIORITY_WEIGHTS.sector).map((k) => [k, 0])),
+      consumerFacing: { yes: 0, no: 0, unknown: 0 },
+      consentPlatformDetected: { yes: 0, no: 0, unknown: 0 },
+      priorRiskScoreCoefficient: 0,
+    },
+  });
+  assert.ok(flat.every((t) => Number.isFinite(t.priority.score)));
+  assert.deepEqual(flat.map((t) => t.key), ['a-example.com', 'b-example.com']);
+});
+
 test('ranking is deterministic for equally scored targets', () => {
   const first = prioritize(['b.example.com', 'a.example.com']).map((t) => t.key);
   const second = prioritize(['a.example.com', 'b.example.com']).map((t) => t.key);
@@ -381,6 +429,36 @@ test('the daily cap is respected and days roll over', () => {
   assert.equal(plan.days[0].startAt, PLAN_START);
   assert.equal(plan.days[1].startAt, '2026-08-04T09:00:00.000Z');
   assert.equal(plan.days[0].items[0].plannedStartAt, PLAN_START);
+});
+
+test('a cooling-off window survives the boundary between two days', () => {
+  // The day boundary is the seam where the per-host guarantee is easiest to lose: each day is
+  // laid out from its own zero, so without a carry-over the gap silently caps at 24 hours no
+  // matter what the site asked for. A delay wider than a day is the only way to see it.
+  const plan = buildScanPlan(['a.example.com', 'b.example.com'], {
+    dailyCap: 1,
+    maxConcurrent: 1,
+    perHostDelayMs: 25 * 60 * 60 * 1000,
+    estimatedScanDurationMs: 10_000,
+    startDate: PLAN_START,
+  });
+
+  const [first, second] = plan.items;
+  assert.equal(first.day, 1);
+  assert.equal(second.day, 2);
+  const gapMs = new Date(second.plannedStartAt) - new Date(first.plannedEndAt);
+  assert.ok(
+    gapMs >= 25 * 60 * 60 * 1000,
+    `example.com was revisited ${gapMs / 3_600_000}h after the previous scan finished`
+  );
+});
+
+test('an unusable startDate is reported rather than surfacing as an opaque RangeError', () => {
+  assert.throws(
+    () => buildScanPlan(['example.com'], { startDate: 'next tuesday' }),
+    /startDate/,
+    'the error has to name the option the operator mistyped'
+  );
 });
 
 test('an empty target list produces an empty plan rather than throwing', () => {
@@ -480,6 +558,25 @@ test('wildcards inside a pattern match', () => {
   assert.equal(isPathAllowed(parsed, '/data/export.csv').allowed, true);
 });
 
+// A timeout rather than a bare assertion: the failure mode being guarded against is a hang,
+// and a hung test that never reports is barely better than the bug.
+test('an elaborate wildcard pattern is decided in bounded time', { timeout: 10_000 }, () => {
+  // Built from `*` wildcards, this pattern takes a backtracking regex longer than the run it
+  // is part of, with no error and no partial result. robots.txt is fetched from every
+  // prospect, so one site could stall an overnight batch.
+  const parsed = parseRobots(`User-agent: *\nDisallow: /${'a*'.repeat(24)}b\n`);
+  const startedAt = Date.now();
+  const decision = isPathAllowed(parsed, `/${'a'.repeat(120)}`);
+  assert.ok(Date.now() - startedAt < 1000, 'pattern matching must not backtrack exponentially');
+  assert.equal(decision.allowed, true, 'the path does not end in b, so the rule does not match');
+});
+
+test('pattern characters that are regex metacharacters are matched literally', () => {
+  const parsed = parseRobots('User-agent: *\nDisallow: /a+b(c)\n');
+  assert.equal(isPathAllowed(parsed, '/a+b(c)').allowed, false);
+  assert.equal(isPathAllowed(parsed, '/aab').allowed, true);
+});
+
 test('a robots file with no applicable group allows everything', () => {
   const parsed = parseRobots('User-agent: BadBot\nDisallow: /\n');
   const decision = isPathAllowed(parsed, '/checkout');
@@ -546,6 +643,25 @@ test('a missing robots.txt means unrestricted, and a server error means undeterm
   } finally {
     missing.close();
     broken.close();
+  }
+});
+
+test('a robots.txt that cannot be read is undetermined, never permission', async () => {
+  // An origin that compresses unconditionally hands back bytes that decode into no rules at
+  // all, and a file with no rules means "allowed" — so a Disallow: / would read as an open
+  // invitation. This is the one direction this check must never fail in.
+  const server = await startServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'gzip' });
+    res.end(zlib.gzipSync('User-agent: *\nDisallow: /\n'));
+  });
+
+  try {
+    const result = await checkRobots(`${server.origin}/checkout`, { timeoutMs: 2000 });
+    assert.equal(result.allowed, false);
+    assert.equal(result.certain, false, 'unreadable is retryable, not a permanent block');
+    assert.match(result.reason, /gzip/);
+  } finally {
+    server.close();
   }
 });
 

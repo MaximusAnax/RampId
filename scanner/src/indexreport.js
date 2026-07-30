@@ -243,11 +243,20 @@ export function assertAnonymous(html, identifiers) {
   const leaked = terms.filter((term) => occursIn(haystack, term));
 
   if (leaked.length) {
+    // The message has to name the real candidate causes, because the maintainer's instinct on
+    // an unexplained block is to switch the guard off. There are three, and only the first is
+    // caller-supplied: a sector or period label with a company in it; a sample company that
+    // shares a name with one of the enforcement matters this template prints; and a sample
+    // company that shares a name with a service in the classifier corpus. The second and third
+    // are not caller mistakes and blocking on them is still the right answer — an index of one
+    // sector that both scanned a company and names it in the enforcement list reads as an
+    // accusation against that company however it was meant.
     throw new AnonymityError(
       `The index would have published ${leaked.length} identifying term(s) from its own ` +
-        `input: ${leaked.join(', ')}. The aggregate must name no individual company. ` +
-        'Check the sector and period labels first — those are the only free text a caller ' +
-        'supplies.',
+        `input: ${leaked.join(', ')}. The aggregate must name no individual company, so ` +
+        'nothing is returned. Check in this order: the sector and period labels, which are ' +
+        'the only free text a caller supplies; the enforcement-context list in this module, ' +
+        'which names real companies; and the service names in the classifier corpus.',
       leaked
     );
   }
@@ -312,12 +321,31 @@ function trackerNames(pass) {
  * A scan that failed records no trackers, which is indistinguishable from a site that
  * transmits none. Letting failures into the denominator would push every headline share
  * downward and make the index quietly wrong in the direction that looks reassuring.
+ *
+ * A PARTIAL capture is a failed capture here, and this is the case that is easy to get wrong.
+ * `capture.usable` only asks whether any conclusion at all can be drawn, which is the right
+ * question for a single client report; a scan whose baseline pass timed out is still usable
+ * for the two passes that loaded. In an aggregate it is not, because the pass that failed
+ * contributes a zero to every share drawn from it — a site whose baseline never loaded would
+ * be counted as one that transmitted nothing before consent. One denominator serves every
+ * figure on the page, so a site has to have produced all three passes to be in it.
  */
 function unmeasurableReason(scan) {
   if (!scan || typeof scan !== 'object') return 'not a scan result';
   if (scan.error && !scan.passes) return 'the scan did not run';
   if (!scan.passes?.baseline) return 'the scan produced no passes';
-  if (scan.capture && scan.capture.usable === false) return 'the page could not be loaded';
+
+  if (scan.capture) {
+    if (scan.capture.usable === false) return 'the page could not be loaded';
+    if (scan.capture.ok === false) return 'only some of the three passes loaded';
+  }
+
+  // Fallback for scans recorded without a capture summary, and a cross-check for scans that
+  // carry one. Judged on the passes themselves so a stored result from an older engine, or a
+  // capture summary that disagrees with its own passes, still fails toward exclusion.
+  const anyPassFailed = ['baseline', 'gpc', 'afterReject'].some((name) => scan.passes[name]?.error);
+  if (anyPassFailed) return 'a capture pass did not complete';
+
   return null;
 }
 
@@ -651,15 +679,23 @@ function spreadPlot(distribution) {
   if (distribution.count === 0) return '';
 
   const clamp = (value) => Math.max(0, Math.min(100, value));
-  const left = clamp(distribution.min);
-  const right = clamp(distribution.max);
-  const boxLeft = clamp(distribution.q1);
-  const boxWidth = Math.max(0.6, clamp(distribution.q3) - boxLeft);
+
+  // Each mark has a minimum width so that a distribution with no spread — every site scoring
+  // the same — is still drawn rather than collapsing to nothing. That minimum has to be taken
+  // out of the left edge when the mark sits at the top of the scale, or the mark starts at
+  // 100% and is drawn entirely outside the track.
+  const mark = (from, to, minimumWidth) => {
+    const width = Math.max(minimumWidth, clamp(to) - clamp(from));
+    return { left: Math.min(clamp(from), 100 - width), width };
+  };
+
+  const whisker = mark(distribution.min, distribution.max, 0.4);
+  const box = mark(distribution.q1, distribution.q3, 0.6);
 
   return `
   <div class="spread" role="img" aria-label="Exposure scores range from ${escapeHtml(oneDecimal(distribution.min))} to ${escapeHtml(oneDecimal(distribution.max))}, with a median of ${escapeHtml(oneDecimal(distribution.median))}">
-    <div class="whisker" style="left:${left}%;width:${Math.max(0.4, right - left)}%"></div>
-    <div class="box" style="left:${boxLeft}%;width:${boxWidth}%"></div>
+    <div class="whisker" style="left:${whisker.left}%;width:${whisker.width}%"></div>
+    <div class="box" style="left:${box.left}%;width:${box.width}%"></div>
     <div class="median" style="left:${clamp(distribution.median)}%"></div>
   </div>
   <div class="scale"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
@@ -735,7 +771,12 @@ function composeIndexHtml(index) {
     },
     {
       figure: percent(index.rejectControl.noRejectControlFound.share),
-      label: 'of sites showing a consent banner had no reject control at banner level',
+      // The denominator is sites that showed a banner OR ran an identifiable consent platform,
+      // not sites that showed a banner. A platform detected only in network traffic — a banner
+      // gated to another region, for instance — is in this denominator without any banner
+      // having been observed, so a card reading "of sites showing a consent banner" would
+      // assert something about a banner this scan never saw.
+      label: 'of sites presenting a consent mechanism had no reject control that automated interaction could reach at banner level',
       note: countOf(index.rejectControl.noRejectControlFound),
     },
   ];
@@ -857,9 +898,8 @@ ${trackerTable(index.trackers.overall, 20)}
     : `
 <h2>No measurable sites in this sample</h2>
 <p>Nothing was measured, so no statistic is reported. An empty sample and a clean sample look
-identical in a table of zeroes and mean opposite things, so no figures are shown at all.</p>
-<h3>Why sites were excluded</h3>
-${exclusions}`;
+identical in a table of zeroes and mean opposite things, so no figures are shown at all. The
+reasons are listed under the method below.</p>`;
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -901,11 +941,17 @@ ${exclusions}`;
     .barrow { grid-template-columns:1fr; gap:.25rem; }
     .barvalue { text-align:left; }
   }
-  .spread { position:relative; height:2.4rem; margin:1rem 0 .2rem; }
+  /* overflow:hidden is a backstop, not the mechanism — spreadPlot clamps every mark inside the
+     track. It is here because an absolutely positioned mark that escaped would widen the whole
+     document rather than scrolling inside its own container. */
+  .spread { position:relative; height:2.4rem; margin:1rem 0 .2rem; overflow:hidden; }
   .whisker { position:absolute; top:1.1rem; height:2px; background:var(--bar); }
   .box { position:absolute; top:.45rem; height:1.4rem; background:var(--panel);
     border:1px solid var(--barstrong); border-radius:.2rem; }
-  .median { position:absolute; top:.3rem; height:1.7rem; width:2px; background:var(--barstrong); }
+  /* margin-left keeps the rule visible when the median sits at 100, where its left edge would
+     otherwise be the track's right edge and the whole line would fall outside it. */
+  .median { position:absolute; top:.3rem; height:1.7rem; width:2px; margin-left:-1px;
+    background:var(--barstrong); }
   .scale { display:flex; justify-content:space-between; font-size:.75rem; color:var(--muted); }
   .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(15rem,1fr)); gap:1.25rem; }
   .tablewrap { overflow-x:auto; }
@@ -930,11 +976,12 @@ ${exclusions}`;
 <p class="lede">${escapeHtml(periodLabel)} · ${escapeHtml(String(measured))} sites measured ·
 no individual company is named in this document</p>
 
-<p>This index records what browsers actually transmitted when they loaded one page on each site in a
-sample of ${escapeHtml(String(sample.submitted))} companies. Every measurement was taken from the
-public internet. No company was contacted, no credentials were used, and no company's systems or
-data were accessed. The figures describe the sample in aggregate and support no conclusion about any
-individual company, including any company that believes it recognises itself here.</p>
+<p>This index records what browsers transmitted on one page of each site in a sample of
+${escapeHtml(String(sample.submitted))} companies. Every figure below is computed over the
+${escapeHtml(String(measured))} of those sites that produced a usable capture. Every measurement was
+taken from the public internet. No company was contacted, no credentials were used, and no company's
+systems or data were accessed. The figures describe the sample in aggregate and support no conclusion
+about any individual company, including any company that believes it recognises itself here.</p>
 
 ${body}
 

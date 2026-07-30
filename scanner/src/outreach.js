@@ -33,7 +33,13 @@ import { findCaptureProblems } from './diff.js';
  * currency figures outright rather than trusting the template.
  */
 
-/** Hard caps. Exported because the tests assert against them rather than magic numbers. */
+/**
+ * Exported because the tests assert against them rather than magic numbers.
+ *
+ * MAX_BODY_SENTENCES is an absolute ceiling nothing raises. The follow-up figure is a base:
+ * a required caveat buys one sentence beyond it, on the same rule that governs the body,
+ * because a qualification is never the thing that gets traded away for brevity.
+ */
 export const MAX_BODY_SENTENCES = 6;
 export const MAX_FOLLOW_UP_SENTENCES = 3;
 
@@ -100,12 +106,32 @@ export const BANNED_PATTERNS = [
   { pattern: /[$£€]\s?\d/, reason: 'a monetary figure in first contact reads as a threat' },
 ];
 
+/**
+ * Blank out strings the scan captured verbatim before the banned list is applied to copy.
+ *
+ * The guard polices language this product wrote. Banned words also turn up inside evidence
+ * quoted word for word — a prospect whose page sits at /data-breach-response, a pixel that
+ * carries a price in its query string — and repeating a company's own URL back to them
+ * accuses nobody. Scanning it anyway made those accounts permanently uncontactable, and with
+ * no wording the sender could change, since the offending text is the recipient's, not ours.
+ *
+ * Only strings the scan itself recorded are exempt, and they are matched literally, never as
+ * a pattern. Nothing a caller supplies is exempt, so a company name cannot be shaped to look
+ * like evidence and slip language past the guard.
+ */
+function maskCapturedEvidence(text, capturedEvidence) {
+  return [...capturedEvidence]
+    .filter((item) => typeof item === 'string' && item.length >= 6)
+    .sort((a, b) => b.length - a.length)
+    .reduce((masked, item) => masked.split(item).join(' '), text);
+}
+
 /** Every banned phrase present in `text`, with the reason each is banned. */
-export function findBannedPhrases(text) {
-  const subject = String(text ?? '');
+export function findBannedPhrases(text, capturedEvidence = []) {
+  const searched = maskCapturedEvidence(String(text ?? ''), capturedEvidence);
   const found = [];
   for (const entry of BANNED_PATTERNS) {
-    const match = subject.match(entry.pattern);
+    const match = searched.match(entry.pattern);
     if (match) found.push({ phrase: match[0], reason: entry.reason });
   }
   return found;
@@ -119,8 +145,8 @@ export function findBannedPhrases(text) {
  * name contains a banned word will make generation throw rather than send — that is the
  * intended trade, since a loud failure is recoverable in seconds and a sent accusation is not.
  */
-export function assertFactualCopy(text, label = 'outreach copy') {
-  const found = findBannedPhrases(text);
+export function assertFactualCopy(text, label = 'outreach copy', capturedEvidence = []) {
+  const found = findBannedPhrases(text, capturedEvidence);
   if (!found.length) return text;
   const detail = found.map((f) => `"${f.phrase}" (${f.reason})`).join('; ');
   throw new Error(`${label} contains language this product never sends: ${detail}`);
@@ -131,13 +157,18 @@ export function assertFactualCopy(text, label = 'outreach copy') {
  *
  * Written this way because copy is full of dotted tokens — facebook.com/tr,
  * navigator.globalPrivacyControl, Sec-GPC: 1 — and splitting on bare periods would count a
- * single sentence about an endpoint as four. A raw evidence URL on its own line has no
- * terminator and correctly counts as zero. The lookbehind exempts a lone initial, so a
+ * single sentence about an endpoint as four. The lookbehind exempts a lone initial, so a
  * signature reading "A. Ndiongue" does not spend a sentence of the budget on the sender's
  * first name.
+ *
+ * A raw evidence URL is dropped before counting rather than trusted to end in a letter. It is
+ * quoted exactly as captured, so its last character belongs to a third party: a request URL
+ * ending in "?" or a path ending in "." would otherwise make an evidence line count as a
+ * sentence and put the body over a cap it does not actually breach.
  */
 export function countSentences(text) {
-  return (String(text ?? '').match(/(?<!\b[A-Za-z])[.!?](?=\s|$)/g) || []).length;
+  const prose = String(text ?? '').replace(/https?:\/\/\S+/gi, ' ');
+  return (prose.match(/(?<!\b[A-Za-z])[.!?](?=\s|$)/g) || []).length;
 }
 
 export function assertSentenceBudget(text, maxSentences, label = 'body') {
@@ -156,7 +187,23 @@ export function assertSentenceBudget(text, maxSentences, label = 'body') {
  * automated check is most likely to be wrong about, so they only lead when nothing positive
  * was observed at all.
  */
-const LEAD_ORDER = ['REJECT_IGNORED', 'GPC_IGNORED', 'PRE_CONSENT', 'NO_CMP', 'NO_REJECT_CONTROL'];
+// OPTOUT_NOT_DISPLAYED leads, ahead of every tracker-based observation, and the reason is
+// category rather than severity.
+//
+// "Since 1 January the regulation requires your site to display that it processed an
+// opt-out signal, and here is what yours displays" is a compliance observation. "Here is
+// the tracking pixel that fired" has the same opening sentence as the demand letters that
+// volume plaintiff firms send to hundreds of brands weekly — which recipients' counsel have
+// trained them to forward and never answer. Leading with the tracker puts a legitimate
+// message into the bin those letters go to, regardless of how carefully it is written.
+const LEAD_ORDER = [
+  'OPTOUT_NOT_DISPLAYED',
+  'REJECT_IGNORED',
+  'GPC_IGNORED',
+  'PRE_CONSENT',
+  'NO_CMP',
+  'NO_REJECT_CONTROL',
+];
 
 /** The pass whose captured requests evidence each finding. */
 const FINDING_PASS = {
@@ -168,7 +215,18 @@ const FINDING_PASS = {
 };
 
 /** Findings that cannot lead a message without a named service to point at. */
+// OPTOUT_NOT_DISPLAYED is deliberately absent: it is an observation about what the page
+// does not show, so there is no tracker to name and requiring one would suppress the lead.
 const NEEDS_NAMED_TRACKER = new Set(['REJECT_IGNORED', 'GPC_IGNORED', 'PRE_CONSENT', 'NO_CMP']);
+
+/**
+ * Scans are read back from disk as often as they come from a live capture, so a record can
+ * arrive truncated. One without a service name is not a service this module can point at: the
+ * first sentence would open on a blank where the name belongs, which is worse than the silence
+ * this module is built to prefer.
+ */
+const hasUsableName = (tracker) =>
+  typeof tracker?.name === 'string' && tracker.name.trim() !== '';
 
 /**
  * Tie-break between services of equal severity, so the named one is chosen rather than
@@ -184,9 +242,15 @@ const PASS_FACT_LABEL = {
   afterReject: 'Pass 3, after the reject control was clicked',
 };
 
-/** The same three passes as a clause that can sit inside a sentence. */
+/**
+ * The same three passes as a clause that can sit inside a sentence.
+ *
+ * The baseline clause names no banner on purpose. It is also the pass behind NO_CMP, where the
+ * first message said no banner could be found at all, and a follow-up referring to "your
+ * banner" would contradict the message it is following up on.
+ */
 const PASS_RECAP_PHRASE = {
-  baseline: 'on first load, before your banner was touched',
+  baseline: 'on first load, before anything on the page was clicked',
   gpc: 'while the browser was advertising Global Privacy Control',
   afterReject: 'after I clicked the reject control on your banner',
 };
@@ -218,13 +282,39 @@ function hostOf(url) {
   }
 }
 
+/**
+ * A label that would read as the end of a sentence cannot be dropped into the middle of one.
+ *
+ * Hostnames and path segments may legitimately end in a full stop — a trailing-dot FQDN, a
+ * path that ends in one — and both arrive from a third party rather than from this codebase.
+ * Carried into prose, one of them ends the sentence in the reader's eye halfway through it
+ * and spends a sentence of the budget, which is enough to stop the message being generated at
+ * all. The copy degrades to naming no endpoint instead, which it is already built to do.
+ */
+const usableLabel = (value) => (value && !/[.!?]$/.test(value) ? value : null);
+
+/**
+ * The host to put in the reader's network-panel filter box. Parsed rather than trimmed with
+ * hostOf's fallback, because a sample that is not a URL would otherwise be printed as though
+ * it were a hostname, telling the reader to filter for something that cannot be filtered for.
+ */
+function sampleHost(sampleUrl) {
+  if (!sampleUrl) return null;
+  try {
+    return usableLabel(new URL(sampleUrl).hostname);
+  } catch {
+    return null;
+  }
+}
+
 /** "www.facebook.com/tr" — host plus one path segment, which is what an engineer greps for. */
 function endpointLabel(sampleUrl) {
   if (!sampleUrl) return null;
   try {
     const parsed = new URL(sampleUrl);
     const [first] = parsed.pathname.split('/').filter(Boolean);
-    return first && first.length <= 24 ? `${parsed.hostname}/${first}` : parsed.hostname;
+    const withSegment = first && first.length <= 24 ? `${parsed.hostname}/${first}` : null;
+    return usableLabel(withSegment) ?? usableLabel(parsed.hostname);
   } catch {
     return null;
   }
@@ -261,7 +351,9 @@ export function selectLeadObservation(scan) {
     if (passKey && (!pass || pass.error)) continue;
 
     const named = new Set(finding.trackers || []);
-    const candidates = (pass?.trackers || []).filter((t) => !named.size || named.has(t.name));
+    const candidates = (pass?.trackers || []).filter(
+      (t) => hasUsableName(t) && (!named.size || named.has(t.name))
+    );
     const ranked = [...candidates].sort(
       (a, b) =>
         (SEVERITY_RANK[b.severity] || 0) - (SEVERITY_RANK[a.severity] || 0) ||
@@ -292,8 +384,12 @@ function buildContext(scan, { company = null, tone = 'plain' } = {}) {
   if (!lead) return null;
 
   const pageHost = hostOf(scan.url);
-  const consentPlatforms = scan.cmp || [];
+  const consentPlatforms = (scan.cmp || []).filter(
+    (name) => typeof name === 'string' && name.trim() !== ''
+  );
   const tracker = lead.tracker;
+  const endpoint = endpointLabel(tracker?.sample);
+  const endpointHost = sampleHost(tracker?.sample);
 
   return {
     scan,
@@ -301,16 +397,35 @@ function buildContext(scan, { company = null, tone = 'plain' } = {}) {
     tone: TONES[tone] || TONES.plain,
     pageHost,
     siteLabel: company ? `${company} (${pageHost})` : pageHost,
+    consentPlatforms,
     cmpLabel: consentPlatforms.length ? `${consentPlatforms.join(' / ')} banner` : 'consent banner',
+    // Whether anything banner-like was seen at all. PRE_CONSENT fires on sites that run a
+    // consent banner and on sites that run none — consent.js records NO_CMP beside it in the
+    // second case — so copy that says "your consent banner" either way asserts a banner the
+    // same scan reports finding no trace of. That contradiction lands in the one sentence the
+    // whole message is betting its credibility on, and the reader settles it in a click.
+    bannerObserved: consentPlatforms.length > 0 || scan.bannerVisible === true,
     observedClause: formatObservedDate(scan.scannedAt)
       ? ` (observed ${formatObservedDate(scan.scannedAt)})`
       : '',
     observedDate: formatObservedDate(scan.scannedAt),
     trackerName: tracker?.name ?? null,
-    endpoint: endpointLabel(tracker?.sample),
-    endpointHost: tracker?.sample ? hostOf(tracker.sample) : null,
+    endpoint,
+    endpointHost,
     rawSample: tracker?.sample ?? null,
     otherNames: lead.others.map((t) => t.name),
+    // Everything in the copy that was quoted from the capture rather than written here,
+    // including the labels derived from a sample URL. See maskCapturedEvidence.
+    capturedEvidence: [
+      scan.url,
+      pageHost,
+      endpoint,
+      endpointHost,
+      tracker?.sample,
+      ...Object.values(scan.passes || {}).flatMap((pass) =>
+        (pass?.trackers || []).map((t) => t.sample)
+      ),
+    ].filter((value) => typeof value === 'string' && value !== ''),
   };
 }
 
@@ -333,7 +448,36 @@ const panelClause = (ctx) =>
     ? 'with the network panel open and "Preserve log" enabled'
     : 'with the network panel open';
 
+/** Both say the request preceded any choice; only one of them claims a banner exists. */
+const beforeConsentClause = (ctx) =>
+  ctx.bannerObserved
+    ? `before anything on your ${ctx.cmpLabel} was clicked`
+    : 'before anything on the page was clicked';
+
+const withoutTouchingClause = (ctx) =>
+  ctx.bannerObserved ? 'without touching the banner' : 'without clicking anything on the page';
+
 const VARIANTS = {
+  OPTOUT_NOT_DISPLAYED: (ctx) => ({
+    subject: `${ctx.pageHost} and the opt-out preference signal display requirement`,
+    // The regulation citation lives in the lead rather than in an optional sentence,
+    // because it is the entire reason this message is a compliance observation rather than
+    // something that reads like a demand letter. It must never be dropped to fit a budget.
+    lead:
+      `Loading ${ctx.siteLabel} with Global Privacy Control switched on, the page showed ` +
+      `nothing indicating the signal had been processed${ctx.observedClause}. California's ` +
+      'CCPA regulations at section 7025(c)(6) changed from "may" to "shall" effective ' +
+      '1 January 2026, so a business that processes an opt-out preference signal now has to ' +
+      'display that it has done so.',
+    extra: 'It is a recent change and an easy one to miss.',
+    verify:
+      'To check it yourself: turn on Global Privacy Control — Brave and DuckDuckGo send it ' +
+      'by default, and there are extensions for other browsers — then load the page and look ' +
+      'for any confirmation that the signal was received.',
+    remediation:
+      'In most consent platforms this is a display setting rather than a code change.',
+  }),
+
   REJECT_IGNORED: (ctx) => ({
     subject: `${ctx.trackerName} request on ${ctx.pageHost} after clicking reject`,
     lead:
@@ -372,17 +516,19 @@ const VARIANTS = {
   }),
 
   PRE_CONSENT: (ctx) => ({
-    subject: `${ctx.trackerName} loads on ${ctx.pageHost} before the consent banner is touched`,
+    subject: ctx.bannerObserved
+      ? `${ctx.trackerName} loads on ${ctx.pageHost} before the consent banner is touched`
+      : `${ctx.trackerName} loads on ${ctx.pageHost} before anything on the page is clicked`,
     lead:
-      `${ctx.trackerName} ${requestClause(ctx)} on first load of ${ctx.siteLabel}, before ` +
-      `anything on your ${ctx.cmpLabel} was clicked${ctx.observedClause}.`,
+      `${ctx.trackerName} ${requestClause(ctx)} on first load of ${ctx.siteLabel}, ` +
+      `${beforeConsentClause(ctx)}${ctx.observedClause}.`,
     caveat: null,
     extra: ctx.otherNames.length
       ? `${nameList(ctx.otherNames)} transmitted on the same load.`
       : null,
     verify:
       `To check it yourself: open the page in a fresh private window ${panelClause(ctx)} and ` +
-      `${filterClause(ctx)} without touching the banner.`,
+      `${filterClause(ctx)} ${withoutTouchingClause(ctx)}.`,
     remediation:
       'This is normally a tag firing on page view instead of on consent, which is a trigger ' +
       'condition in the tag manager rather than a code change.',
@@ -491,14 +637,18 @@ function buildPlainFacts(ctx) {
     ctx.observedDate ? `Observed: ${ctx.observedDate} (UTC)` : null,
     'Method: three page loads from a clean browser profile, from the public internet. No ' +
       'access to systems, accounts or data.',
-    `Consent platform detected: ${scan.cmp?.length ? scan.cmp.join(', ') : 'none identified'}`,
+    `Consent platform detected: ${
+      ctx.consentPlatforms.length ? ctx.consentPlatforms.join(', ') : 'none identified'
+    }`,
     `Observation: ${lead.finding.title}`,
   ].filter(Boolean);
 
   if (lead.passKey) {
     const pass = scan.passes[lead.passKey];
     const named = new Set(lead.finding.trackers || []);
-    const rows = (pass.trackers || []).filter((t) => !named.size || named.has(t.name));
+    const rows = (pass.trackers || []).filter(
+      (t) => hasUsableName(t) && (!named.size || named.has(t.name))
+    );
     for (const t of rows.slice(0, 6)) {
       facts.push(
         `${PASS_FACT_LABEL[lead.passKey]}: ${t.name} requested ` +
@@ -513,7 +663,9 @@ function buildPlainFacts(ctx) {
     );
   }
 
-  return facts.map((fact, index) => assertFactualCopy(fact, `plainFacts[${index}]`));
+  return facts.map((fact, index) =>
+    assertFactualCopy(fact, `plainFacts[${index}]`, ctx.capturedEvidence)
+  );
 }
 
 /**
@@ -573,6 +725,12 @@ export function generateOutreach(scan, options = {}) {
 
   const paragraphs = paragraphsFrom(items, ['observation', 'verify', 'ask', 'scope']);
 
+  // The budget is asserted on the prose alone, before the evidence line and the signature are
+  // attached. Neither is a sentence and neither is something the template controls: a captured
+  // URL that happens to end in a full stop or a question mark must not be able to stop a
+  // message being generated, and a sender's name must not either.
+  assertSentenceBudget(paragraphs.join(' '), maxSentences, 'outreach body');
+
   // The raw URL rides below the observation rather than inside a sentence: it is evidence to
   // be pasted into a search box, not prose, and putting it in a sentence makes the sentence
   // unreadable at the exact moment the reader is deciding whether this is real.
@@ -580,16 +738,12 @@ export function generateOutreach(scan, options = {}) {
     paragraphs[0] = `${paragraphs[0]}\n${ctx.rawSample}`;
   }
 
-  // The budget is asserted on the prose, before the signature is attached. A sender's name is
-  // not something the template controls and must never be able to fail generation.
-  assertSentenceBudget(paragraphs.join(' '), maxSentences, 'outreach body');
-
   if (senderName) paragraphs.push(`— ${senderName}`);
   const body = paragraphs.join('\n\n');
 
   return {
-    subject: assertFactualCopy(copy.subject, 'outreach subject'),
-    body: assertFactualCopy(body, 'outreach body'),
+    subject: assertFactualCopy(copy.subject, 'outreach subject', ctx.capturedEvidence),
+    body: assertFactualCopy(body, 'outreach body', ctx.capturedEvidence),
     plainFacts: buildPlainFacts(ctx),
   };
 }
@@ -625,19 +779,28 @@ export function generateFollowUp(scan, options = {}) {
   // Compressed where a named service exists, verbatim from the first message where one does
   // not. Either way the fact is regenerated from the same scan rather than paraphrased, so a
   // follow-up can never describe the observation more strongly than the original did.
-  const recap = ctx.trackerName
+  const compressed = ctx.trackerName
     ? `Closing the loop on my earlier note: ${ctx.trackerName} ${requestClause(ctx)} on ` +
       `${ctx.pageHost} ${PASS_RECAP_PHRASE[ctx.lead.passKey]}${ctx.observedClause}.`
-    : copy.lead;
+    : null;
+
+  // A negative observation is only ever restated with the qualification it was first made
+  // with. The compressed recap states what was transmitted and drops the negative claim
+  // entirely, so it needs no caveat; the verbatim lead keeps the claim, and dropping the
+  // caveat there would make the second message a firmer assertion than the first — the one
+  // direction a follow-up must never move in, and on the finding this engine is most likely
+  // to have got wrong.
+  const caveat = compressed ? null : copy.caveat;
+  const maxSentences = MAX_FOLLOW_UP_SENTENCES + (caveat ? 1 : 0);
 
   const paragraphs = [
-    recap,
+    [compressed ?? copy.lead, caveat].filter(Boolean).join(' '),
     'The full capture with the raw request URLs is still yours at no charge, and if someone ' +
       'else is the right person for it I am glad to send it to them instead.',
     'This is the only follow-up I will send; no reply is needed if it is not relevant.',
-  ];
+  ].filter(Boolean);
 
-  assertSentenceBudget(paragraphs.join(' '), MAX_FOLLOW_UP_SENTENCES, 'follow-up body');
+  assertSentenceBudget(paragraphs.join(' '), maxSentences, 'follow-up body');
 
   if (senderName) paragraphs.push(`— ${senderName}`);
   const body = paragraphs.join('\n\n');
@@ -645,7 +808,7 @@ export function generateFollowUp(scan, options = {}) {
   const subject = /^re:\s/i.test(base) ? base : `Re: ${base}`;
 
   return {
-    subject: assertFactualCopy(subject, 'follow-up subject'),
-    body: assertFactualCopy(body, 'follow-up body'),
+    subject: assertFactualCopy(subject, 'follow-up subject', ctx.capturedEvidence),
+    body: assertFactualCopy(body, 'follow-up body', ctx.capturedEvidence),
   };
 }

@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Tracking &amp; Consent Evidence — Northgate Bank</title>
+<title>Tracking &amp; Consent Evidence — Bramble Retail</title>
 <style>
   :root { --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#ffffff; --panel:#f8fafc; }
   @media (prefers-color-scheme: dark) {
@@ -39,30 +39,36 @@
 <body><div class="wrap">
 
 <h1>Tracking &amp; consent evidence</h1>
-<p class="lede">Northgate Bank · observed Thu, 30 Jul 2026 21:16:02 GMT</p>
+<p class="lede">Bramble Retail · observed Thu, 30 Jul 2026 21:54:15 GMT</p>
 
 <div class="score">
-  <b>60</b>
-  <span class="muted">exposure score out of 100 &middot; 2 finding(s)
+  <b>75</b>
+  <span class="muted">exposure score out of 100 &middot; 3 finding(s)
   &middot; consent mechanism: OneTrust</span>
 </div>
 
 <p>This report records what a browser actually transmitted when it loaded
-<code>http://127.0.0.1:8240/x.html</code>. It was produced entirely from the public site. No access to
+<code>https://www.optout-fixture.example:8443/</code>. It was produced entirely from the public site. No access to
 your systems, accounts, or data was used or required.</p>
 
 <h2>What we observed</h2>
       <article class="finding" style="background:#fef2f2;border-color:#fecaca">
         <div class="sev" style="color:#b91c1c">Critical</div>
-        <h3>2 third-party tracker(s) fired before any consent interaction</h3>
+        <h3>3 third-party tracker(s) fired before any consent interaction</h3>
         <p>A consent platform (OneTrust) is deployed, yet these trackers transmitted before the visitor made any choice.</p>
-        <p class="muted">Services observed: TikTok Pixel, Ada</p>
+        <p class="muted">Services observed: Hotjar, Meta Pixel, TikTok Pixel</p>
       </article>
       <article class="finding" style="background:#fef2f2;border-color:#fecaca">
         <div class="sev" style="color:#b91c1c">Critical</div>
-        <h3>1 tracker(s) continued firing with Global Privacy Control enabled</h3>
+        <h3>3 tracker(s) continued firing with Global Privacy Control enabled</h3>
         <p>The request advertised Sec-GPC: 1 and navigator.globalPrivacyControl = true. California regulations effective 1 January 2026 require opt-out preference signals to be honoured.</p>
-        <p class="muted">Services observed: TikTok Pixel</p>
+        <p class="muted">Services observed: Hotjar, Meta Pixel, TikTok Pixel</p>
+      </article>
+      <article class="finding" style="background:#fff7ed;border-color:#fed7aa">
+        <div class="sev" style="color:#c2410c">High</div>
+        <h3>No indication that the opt-out preference signal was processed</h3>
+        <p>The page was loaded with Global Privacy Control enabled — Sec-GPC: 1 and navigator.globalPrivacyControl set — and nothing on the page indicated the signal had been processed. California’s CCPA regulations at section 7025(c)(6) changed from &quot;may&quot; to &quot;shall&quot; effective 1 January 2026, requiring a business that processes an opt-out preference signal to display that it has done so.  Third-party transmission also continued during this pass.</p>
+        
       </article>
 
 <h2>Method</h2>
@@ -74,14 +80,19 @@ your systems, accounts, or data was used or required.</p>
     <div class="tablewrap"><table><thead><tr><th>Service</th><th>What it does</th><th>Endpoint</th></tr></thead>
            <tbody>
       <tr>
+        <td><strong>Hotjar</strong><div class="muted">session-replay</div></td>
+        <td>Captures session recordings and heatmaps of user interaction.</td>
+        <td><code>static.hotjar.com</code></td>
+      </tr>
+      <tr>
+        <td><strong>Meta Pixel</strong><div class="muted">ad-pixel</div></td>
+        <td>Transmits page and event data to Meta, keyed to a user identifier.</td>
+        <td><code>www.facebook.com</code></td>
+      </tr>
+      <tr>
         <td><strong>TikTok Pixel</strong><div class="muted">ad-pixel</div></td>
         <td>Transmits page and event data to TikTok.</td>
         <td><code>analytics.tiktok.com</code></td>
-      </tr>
-      <tr>
-        <td><strong>Ada</strong><div class="muted">customer-success</div></td>
-        <td>Transmits visitor interaction data to a customer engagement service.</td>
-        <td><code>static.ada.support</code></td>
       </tr></tbody></table></div>
     
   </section>
@@ -92,14 +103,19 @@ your systems, accounts, or data was used or required.</p>
     <div class="tablewrap"><table><thead><tr><th>Service</th><th>What it does</th><th>Endpoint</th></tr></thead>
            <tbody>
       <tr>
+        <td><strong>Hotjar</strong><div class="muted">session-replay</div></td>
+        <td>Captures session recordings and heatmaps of user interaction.</td>
+        <td><code>static.hotjar.com</code></td>
+      </tr>
+      <tr>
+        <td><strong>Meta Pixel</strong><div class="muted">ad-pixel</div></td>
+        <td>Transmits page and event data to Meta, keyed to a user identifier.</td>
+        <td><code>www.facebook.com</code></td>
+      </tr>
+      <tr>
         <td><strong>TikTok Pixel</strong><div class="muted">ad-pixel</div></td>
         <td>Transmits page and event data to TikTok.</td>
         <td><code>analytics.tiktok.com</code></td>
-      </tr>
-      <tr>
-        <td><strong>Ada</strong><div class="muted">customer-success</div></td>
-        <td>Transmits visitor interaction data to a customer engagement service.</td>
-        <td><code>static.ada.support</code></td>
       </tr></tbody></table></div>
     
   </section>
@@ -127,14 +143,18 @@ your systems, accounts, or data was used or required.</p>
 <p class="muted">California's regulators test opt-out mechanisms in real browsers, against real
 advertising and analytics stacks, and act when the mechanism fails that test. The passes above
 reproduce that examination. Recent public enforcement, and what each turned on:</p>
-<ul><li><strong>Disney / ABC</strong> — $2.75M
-      <span class="muted">(California Attorney General, February 2026)</span><br>
-      <span class="muted">Websites and apps continued sharing data with advertising partners after consumers opted out.</span></li><li><strong>PlayOn Sports</strong> — $1.1M
-      <span class="muted">(CPPA, 2026)</span><br>
+<ul><li><strong>General Motors</strong> — $12.75M
+      <span class="muted">(Attorney General, district attorneys and CPPA jointly, 8 May 2026)</span><br>
+      <span class="muted">Largest CCPA penalty to date, concerning collection and sharing of driver data.</span></li><li><strong>Disney / ABC</strong> — $2.75M
+      <span class="muted">(California Attorney General, 11 February 2026)</span><br>
+      <span class="muted">Websites and apps continued sharing data with advertising partners after consumers opted out.</span></li><li><strong>Tractor Supply</strong> — $1.35M
+      <span class="muted">(CPPA, 30 September 2025)</span><br>
+      <span class="muted">Failure to honour opt-out preference signals was among the violations found.</span></li><li><strong>PlayOn Sports</strong> — $1.1M
+      <span class="muted">(CPPA, 3 March 2026)</span><br>
       <span class="muted">No clear mechanism for consumers to opt out of the sale or sharing of personal information.</span></li><li><strong>Honda</strong> — $632,500
-      <span class="muted">(CPPA, 2026)</span><br>
-      <span class="muted">Opt-out flow required more from the consumer than the equivalent opt-in.</span></li><li><strong>Ford</strong> — $375,703
-      <span class="muted">(CPPA, March 2026)</span><br>
+      <span class="muted">(CPPA, March 2025)</span><br>
+      <span class="muted">Asymmetric choice architecture, verification friction on opt-outs, and authorised-agent handling.</span></li><li><strong>Ford</strong> — $375,703
+      <span class="muted">(CPPA, 5 March 2026)</span><br>
       <span class="muted">Required consumers to verify an email address before an opt-out would be processed.</span></li></ul>
 
 <h2>What this method cannot see</h2>

@@ -17,37 +17,52 @@
 import { corpusStats } from './entities.js';
 
 /**
- * Public enforcement, described by what went wrong rather than by the number.
+ * Public enforcement, described by what each action actually turned on.
  *
- * The amounts are not the persuasive part — the mechanics are. Each of these was decided on
- * a technical test of the opt-out mechanism, run in a real browser against a real vendor
- * stack, which is the same examination this report reproduces. A reader who sees that the
- * regulator's method and this method are the same understands the report's relevance
- * without anyone having to assert that they are exposed.
+ * Accuracy here is not pedantry. This report is read by privacy counsel, and counsel will
+ * check every attribution, date and amount. One wrong agency or year discredits the entire
+ * document in the exact channel where credibility is the whole asset. An earlier draft of
+ * this list attributed Disney to the CPPA (it was the Attorney General), dated Honda to
+ * 2026 (it was March 2025), and omitted the two largest actions entirely.
+ *
+ * Penalty figures are CPI-indexed and have been $2,663 / $7,988 since 1 January 2025 — not
+ * the $2,500 / $7,500 in the statute as originally enacted.
  */
 const ENFORCEMENT_CONTEXT = [
   {
+    who: 'General Motors',
+    amount: '$12.75M',
+    when: 'Attorney General, district attorneys and CPPA jointly, 8 May 2026',
+    what: 'Largest CCPA penalty to date, concerning collection and sharing of driver data.',
+  },
+  {
     who: 'Disney / ABC',
     amount: '$2.75M',
-    when: 'California Attorney General, February 2026',
+    when: 'California Attorney General, 11 February 2026',
     what: 'Websites and apps continued sharing data with advertising partners after consumers opted out.',
+  },
+  {
+    who: 'Tractor Supply',
+    amount: '$1.35M',
+    when: 'CPPA, 30 September 2025',
+    what: 'Failure to honour opt-out preference signals was among the violations found.',
   },
   {
     who: 'PlayOn Sports',
     amount: '$1.1M',
-    when: 'CPPA, 2026',
+    when: 'CPPA, 3 March 2026',
     what: 'No clear mechanism for consumers to opt out of the sale or sharing of personal information.',
   },
   {
     who: 'Honda',
     amount: '$632,500',
-    when: 'CPPA, 2026',
-    what: 'Opt-out flow required more from the consumer than the equivalent opt-in.',
+    when: 'CPPA, March 2025',
+    what: 'Asymmetric choice architecture, verification friction on opt-outs, and authorised-agent handling.',
   },
   {
     who: 'Ford',
     amount: '$375,703',
-    when: 'CPPA, March 2026',
+    when: 'CPPA, 5 March 2026',
     what: 'Required consumers to verify an email address before an opt-out would be processed.',
   },
 ];

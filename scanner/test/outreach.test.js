@@ -95,6 +95,7 @@ function makeScan({
   afterReject = [],
   rejectClicked = true,
   cmp = ['OneTrust'],
+  bannerVisible = null,
   findings = [],
   riskScore = 0,
   errors = [],
@@ -115,7 +116,9 @@ function makeScan({
     scannedAt,
     durationMs: 24000,
     cmp,
-    bannerVisible: cmp.length > 0,
+    // consent.js reports a bespoke banner it cannot name, so this is a separate signal from
+    // the platform list and the copy has to read it separately.
+    bannerVisible: bannerVisible === null ? cmp.length > 0 : bannerVisible,
     passes: {
       baseline: pass(baseline, 'baseline'),
       gpc: pass(gpc, 'gpc'),
@@ -292,6 +295,132 @@ test('a negative observation carries its own manual-check caveat', () => {
   assert.match(body, /manual look/);
   assert.doesNotMatch(body, /continued firing after/, 'nothing may be claimed about pass 3');
   assert.ok(plainFacts.some((fact) => /Pass 3 could not be completed/.test(fact)));
+});
+
+test('no consent banner is claimed on a site where none was found', () => {
+  // consent.js records PRE_CONSENT and NO_CMP together on a site with no banner at all, and
+  // PRE_CONSENT leads. Copy that says "your consent banner" regardless puts a statement the
+  // reader disproves in one click into the sentence the whole message rests on, and
+  // contradicts the sibling finding in the same scan.
+  const noBanner = makeScan({
+    cmp: [],
+    bannerVisible: false,
+    baseline: [TRACKER.meta, TRACKER.ga],
+    findings: [FINDING.preConsent(['Meta Pixel', 'Google Analytics']), FINDING.noCmp()],
+  });
+
+  const { body, subject } = generateOutreach(noBanner, {});
+  assert.match(body, /before anything on the page was clicked/);
+  assert.doesNotMatch(body, /your consent banner|touching the banner/);
+  assert.doesNotMatch(subject, /consent banner/, 'the subject presupposes nothing either');
+
+  // A site that does have one keeps the more specific wording.
+  const withBanner = makeScan({
+    baseline: [TRACKER.meta],
+    findings: [FINDING.preConsent(['Meta Pixel'])],
+  });
+  assert.match(generateOutreach(withBanner, {}).body, /your OneTrust banner was clicked/);
+});
+
+test('the follow-up never refers to a banner the first message could not find', () => {
+  const noCmp = makeScan({
+    cmp: [],
+    bannerVisible: false,
+    baseline: [TRACKER.meta],
+    findings: [FINDING.noCmp()],
+  });
+
+  const first = generateOutreach(noCmp, {});
+  assert.match(first.body, /no consent banner or consent platform was detectable/);
+
+  const followUp = generateFollowUp(noCmp, { priorSubject: first.subject });
+  assert.match(followUp.body, /Meta Pixel/);
+  assert.doesNotMatch(followUp.body, /your banner/, 'the two messages must not contradict');
+});
+
+test('a follow-up that restates a negative observation restates its caveat too', () => {
+  // NO_REJECT_CONTROL has no named service to compress the fact into, so the follow-up
+  // reuses the claim word for word. Dropping the qualification there would make the second
+  // message a firmer assertion than the first, on the finding automation is most likely to
+  // have got wrong.
+  const followUp = generateFollowUp(NO_REJECT, {});
+  assert.match(followUp.body, /could not find a reject control/);
+  assert.match(followUp.body, /preferences dialog/);
+  assert.ok(countSentences(followUp.body) <= MAX_FOLLOW_UP_SENTENCES + 1);
+
+  // A caveat buys a sentence; it does not license a longer follow-up generally.
+  assert.ok(countSentences(generateFollowUp(LEAKY, {}).body) <= MAX_FOLLOW_UP_SENTENCES);
+});
+
+test('a banned word inside a captured URL does not make a prospect uncontactable', () => {
+  // The guard polices language this product wrote. A company whose page sits at
+  // /data-breach-response accuses nobody by having that URL, and refusing to write to them
+  // left the sender nothing to reword — the offending text is the recipient's own.
+  const sample = 'https://www.facebook.com/tr?id=1&cd[value]=$50&ev=Purchase';
+  const awkward = makeScan({
+    url: 'https://example.com/legal/data-breach-response',
+    baseline: [{ ...TRACKER.meta, sample }],
+    afterReject: [{ ...TRACKER.meta, sample }],
+    findings: [FINDING.rejectIgnored(['Meta Pixel'])],
+  });
+
+  const message = generateOutreach(awkward, { tone: 'technical' });
+  assert.ok(message, 'captured evidence must not be able to block generation');
+  assert.ok(message.plainFacts.some((fact) => fact.includes('data-breach-response')));
+  assert.ok(message.body.includes(sample), 'the evidence is still quoted exactly as captured');
+
+  // The exemption covers captured strings only. The same words written as copy still throw,
+  // and a caller-supplied name cannot borrow the exemption.
+  assert.throws(() => assertFactualCopy('This is a breach of the law.'), /never sends/);
+  assert.throws(() => generateOutreach(awkward, { company: 'Breach Recovery Inc' }), /never sends/);
+});
+
+test('a captured URL ending in a terminator neither ends a sentence nor breaks the budget', () => {
+  // The last character of a request URL belongs to a third party. Dropped mid-sentence it
+  // reads as the sentence ending; counted as prose it puts the body over a cap it does not
+  // actually breach, which used to stop the message being generated at all.
+  const odd = { ...TRACKER.meta, sample: 'https://cdn.example.net/collect.' };
+  const scan = makeScan({
+    baseline: [odd],
+    gpc: [odd],
+    afterReject: [odd],
+    findings: [FINDING.rejectIgnored(['Meta Pixel'])],
+  });
+
+  for (const tone of ALL_TONES) {
+    const message = generateOutreach(scan, { tone });
+    assert.ok(message, `${tone}: a trailing full stop must not stop generation`);
+    assert.ok(countSentences(message.body) <= MAX_BODY_SENTENCES, tone);
+    assert.doesNotMatch(
+      message.body.split('\n')[0],
+      /collect\.\s/,
+      `${tone}: no endpoint label may close a sentence halfway through it`
+    );
+  }
+
+  assert.ok(generateOutreach(scan, {}).plainFacts.some((fact) => fact.includes('collect.')));
+});
+
+test('a malformed record produces no message rather than a blank in the first sentence', () => {
+  // Scans are read back from disk as often as they come from a live capture, so a record can
+  // arrive truncated. Opening on "null sent a request" is worse than sending nothing.
+  const nameless = makeScan({
+    baseline: [{ ...TRACKER.meta, name: undefined }],
+    afterReject: [{ ...TRACKER.meta, name: undefined }],
+    findings: [FINDING.rejectIgnored([])],
+  });
+  assert.equal(generateOutreach(nameless, {}), null);
+
+  // A platform list that arrived as objects rather than names must not print into the copy.
+  const oddCmp = makeScan({
+    cmp: [{ name: 'OneTrust' }],
+    baseline: [TRACKER.meta],
+    afterReject: [TRACKER.meta],
+    findings: [FINDING.rejectIgnored(['Meta Pixel'])],
+  });
+  const message = generateOutreach(oddCmp, {});
+  assert.doesNotMatch(message.body, /\[object Object\]/);
+  assert.ok(message.plainFacts.every((fact) => !fact.includes('[object Object]')));
 });
 
 test('no endpoint is invented when the capture recorded no sample URL', () => {

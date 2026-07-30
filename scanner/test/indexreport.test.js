@@ -181,6 +181,56 @@ test('failed captures are excluded from the denominator rather than counted as c
   assert.equal(i.sample.observedTo, '2026-07-14T09:00:00.000Z');
 });
 
+test('a partially captured site is excluded rather than counted as transmitting nothing', () => {
+  // capture.usable only asks whether any conclusion at all can be drawn, which is the right
+  // question for one client report and the wrong one here. A site whose baseline pass timed
+  // out contributes an empty baseline to a share headed "transmitted before any consent
+  // interaction", so it would be counted as a site that transmitted nothing — the aggregate
+  // failing quietly in the reassuring direction.
+  const partial = makeScan({
+    url: 'https://halfloaded-example.com/',
+    company: 'Halfloaded Example',
+    cmp: ['OneTrust'],
+    bannerVisible: true,
+    rejectClicked: true,
+    capture: { ok: false, passesLoaded: 2, usable: true, note: 'Only 2 of 3 passes loaded successfully.' },
+  });
+  partial.passes.baseline.error = 'net::ERR_TIMED_OUT';
+
+  const clean = makeScan({
+    url: 'https://fullyloaded-example.com/',
+    company: 'Fullyloaded Example',
+    cmp: ['OneTrust'],
+    bannerVisible: true,
+    rejectClicked: true,
+    baseline: [META()],
+    findings: [finding('PRE_CONSENT', 'critical')],
+    riskScore: 30,
+  });
+
+  const i = buildIndex([partial, clean], { sector: 'Test' });
+  assert.equal(i.sample.measured, 1);
+  assert.equal(i.sample.excluded, 1);
+  assert.deepEqual(i.sample.exclusions, [{ reason: 'only some of the three passes loaded', count: 1 }]);
+  assert.equal(
+    i.consentPlatform.transmittedPreConsentDespitePlatform.shareOfPlatformSites,
+    1,
+    'the one site actually measured transmitted pre-consent; a half-captured site must not halve it'
+  );
+});
+
+test('a scan recorded without a capture summary is judged on its own passes', () => {
+  // Stored results from an older engine carry no capture object. Excluding on the pass errors
+  // directly means such a record still fails toward exclusion rather than toward a zero.
+  const scan = makeScan({ url: 'https://legacy-example.com/', company: 'Legacy Example' });
+  delete scan.capture;
+  scan.passes.gpc.error = 'net::ERR_ABORTED';
+
+  const i = buildIndex([scan], { sector: 'Test' });
+  assert.equal(i.sample.measured, 0);
+  assert.deepEqual(i.sample.exclusions, [{ reason: 'a capture pass did not complete', count: 1 }]);
+});
+
 test('share of sites with at least one observation, and share by observation type', () => {
   const i = index();
   assert.deepEqual(i.findings.anyFinding, { count: 4, denominator: 5, share: 0.8 });
@@ -452,6 +502,62 @@ test('the methodology states the sample, the dates and what the method cannot se
   assert.match(html, /One page per site/);
   assert.match(html, /One geography, one profile/);
   assert.match(html, /PERCENTILE\.INC/, 'the quartile definition must be named');
+});
+
+test('the reject-control figure is not described as a share of sites that showed a banner', () => {
+  // A consent platform detected only in network traffic — a banner gated to another region,
+  // say — puts a site in this denominator without any banner having been observed. Describing
+  // the figure as a share of sites "showing a consent banner" asserts something about a banner
+  // this method never saw, on the one figure most likely to be quoted out of the page.
+  const platformOnly = makeScan({
+    url: 'https://geogated-example.com/',
+    company: 'Geogated Example',
+    cmp: ['OneTrust'],
+    bannerVisible: false,
+    findings: [finding('NO_REJECT_CONTROL', 'high')],
+    riskScore: 15,
+  });
+
+  const i = buildIndex([platformOnly], { sector: 'Test' });
+  assert.equal(i.rejectControl.consentMechanismPresent.count, 1, 'a named platform counts as a mechanism');
+
+  const html = renderIndexHtml(i);
+  assert.ok(
+    !/of sites showing a consent banner/i.test(html),
+    'the headline card must describe the denominator it was actually computed over'
+  );
+  assert.match(html, /consent mechanism/i);
+});
+
+test('caller-supplied labels are escaped rather than injected into the page', () => {
+  // The sector and period are the only free text a caller supplies, and this artifact is
+  // published rather than read once, so an unescaped label would be a stored injection.
+  const html = renderIndexHtml(
+    buildIndex([], { sector: '<script>alert(1)</script>', period: '" onmouseover="alert(2)' })
+  );
+  assert.ok(!/<script>alert/i.test(html), 'the tag must not survive as markup');
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  // The period lands in element content, so `onmouseover=` remains as inert text. What must
+  // not survive is the quote that would close an attribute if this text ever moved into one.
+  assert.ok(!/"\s*onmouseover=/i.test(html), 'the quote that would break out of an attribute must be escaped');
+  assert.match(html, /&quot; onmouseover=&quot;alert\(2\)/);
+});
+
+test('a blocked publication says where the collision could have come from', () => {
+  // A sample company sharing a name with one of the enforcement matters this template prints
+  // blocks publication, correctly — an index of one sector that both scanned a company and
+  // names it in the enforcement list reads as an accusation however it was meant. The message
+  // has to name that cause, because the maintainer's instinct on an unexplained block is to
+  // switch the guard off.
+  const scan = makeScan({ url: 'https://www.honda.com/', company: 'Honda' });
+  assert.throws(
+    () => renderIndexHtml(buildIndex([scan], { sector: 'US automotive' })),
+    (err) => {
+      assert.ok(err instanceof AnonymityError);
+      assert.match(err.message, /enforcement/i, 'the message must not blame the sector label alone');
+      return true;
+    }
+  );
 });
 
 test('the page is self-contained and renders its distribution without external resources', () => {

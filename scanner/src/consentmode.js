@@ -660,7 +660,7 @@ export function detectPrivacyStrings(requestUrl) {
     // A GPP header that parses but lists no readable section has not been decoded in any
     // sense the caller can use, so it is reported the same way as one that failed outright.
     gpp: gppRaw
-      ? { present: true, decoded: (gpp?.sectionIds.length ?? 0) > 0, ...(gpp ?? { raw: gppRaw }) }
+      ? { present: true, decoded: (gpp?.sectionIds?.length ?? 0) > 0, ...(gpp ?? { raw: gppRaw }) }
       : null,
     tcf: tcfRaw ? { present: true, decoded: tcf !== null, ...(tcf ?? { raw: tcfRaw }) } : null,
     gdprApplies: params.has('gdpr') ? params.get('gdpr') === '1' : null,
