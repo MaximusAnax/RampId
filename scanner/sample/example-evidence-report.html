@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Tracking &amp; Consent Evidence — Harborline Retail</title>
+<title>Tracking &amp; Consent Evidence — Wellspring Co</title>
 <style>
   :root { --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#ffffff; --panel:#f8fafc; }
   @media (prefers-color-scheme: dark) {
@@ -39,36 +39,30 @@
 <body><div class="wrap">
 
 <h1>Tracking &amp; consent evidence</h1>
-<p class="lede">Harborline Retail · observed Thu, 30 Jul 2026 20:34:41 GMT</p>
+<p class="lede">Wellspring Co · observed Thu, 30 Jul 2026 20:45:52 GMT</p>
 
 <div class="score">
-  <b>90</b>
-  <span class="muted">exposure score out of 100 &middot; 3 finding(s)
+  <b>60</b>
+  <span class="muted">exposure score out of 100 &middot; 2 finding(s)
   &middot; consent mechanism: OneTrust</span>
 </div>
 
 <p>This report records what a browser actually transmitted when it loaded
-<code>http://127.0.0.1:8210/onetrust-like.html</code>. It was produced entirely from the public site. No access to
+<code>http://127.0.0.1:8222/x.html</code>. It was produced entirely from the public site. No access to
 your systems, accounts, or data was used or required.</p>
 
 <h2>What we observed</h2>
       <article class="finding" style="background:#fef2f2;border-color:#fecaca">
         <div class="sev" style="color:#b91c1c">Critical</div>
-        <h3>2 third-party tracker(s) fired before any consent interaction</h3>
+        <h3>1 third-party tracker(s) fired before any consent interaction</h3>
         <p>A consent platform (OneTrust) is deployed, yet these trackers transmitted before the visitor made any choice.</p>
-        <p class="muted">Services observed: Hotjar, Meta Pixel</p>
+        <p class="muted">Services observed: TikTok Pixel</p>
       </article>
       <article class="finding" style="background:#fef2f2;border-color:#fecaca">
         <div class="sev" style="color:#b91c1c">Critical</div>
-        <h3>2 tracker(s) continued firing with Global Privacy Control enabled</h3>
+        <h3>1 tracker(s) continued firing with Global Privacy Control enabled</h3>
         <p>The request advertised Sec-GPC: 1 and navigator.globalPrivacyControl = true. California regulations effective 1 January 2026 require opt-out preference signals to be honoured.</p>
-        <p class="muted">Services observed: Hotjar, Meta Pixel</p>
-      </article>
-      <article class="finding" style="background:#fef2f2;border-color:#fecaca">
-        <div class="sev" style="color:#b91c1c">Critical</div>
-        <h3>1 tracker(s) continued firing after the reject control was clicked</h3>
-        <p>The consent banner offered a reject control, it was clicked, and these trackers transmitted afterwards. This contradicts the choice the site itself presented.</p>
-        <p class="muted">Services observed: Meta Pixel</p>
+        <p class="muted">Services observed: TikTok Pixel</p>
       </article>
 
 <h2>Method</h2>
@@ -80,15 +74,13 @@ your systems, accounts, or data was used or required.</p>
     <div class="tablewrap"><table><thead><tr><th>Service</th><th>What it does</th><th>Endpoint</th></tr></thead>
            <tbody>
       <tr>
-        <td><strong>Hotjar</strong><div class="muted">session-replay</div></td>
-        <td>Captures session recordings and heatmaps of user interaction.</td>
-        <td><code>static.hotjar.com</code></td>
-      </tr>
-      <tr>
-        <td><strong>Meta Pixel</strong><div class="muted">ad-pixel</div></td>
-        <td>Transmits page and event data to Meta, keyed to a user identifier.</td>
-        <td><code>www.facebook.com</code></td>
+        <td><strong>TikTok Pixel</strong><div class="muted">ad-pixel</div></td>
+        <td>Transmits page and event data to TikTok.</td>
+        <td><code>analytics.tiktok.com</code></td>
       </tr></tbody></table></div>
+    <p class="muted"><strong>Also observed, and not counted as findings:</strong>
+           Meta Pixel, Google Analytics. These requests carried a signal that consent was denied
+           (Google Consent Mode or Limited Data Use), which is the designed behaviour.</p>
   </section>
 
   <section class="pass">
@@ -97,27 +89,20 @@ your systems, accounts, or data was used or required.</p>
     <div class="tablewrap"><table><thead><tr><th>Service</th><th>What it does</th><th>Endpoint</th></tr></thead>
            <tbody>
       <tr>
-        <td><strong>Hotjar</strong><div class="muted">session-replay</div></td>
-        <td>Captures session recordings and heatmaps of user interaction.</td>
-        <td><code>static.hotjar.com</code></td>
-      </tr>
-      <tr>
-        <td><strong>Meta Pixel</strong><div class="muted">ad-pixel</div></td>
-        <td>Transmits page and event data to Meta, keyed to a user identifier.</td>
-        <td><code>www.facebook.com</code></td>
+        <td><strong>TikTok Pixel</strong><div class="muted">ad-pixel</div></td>
+        <td>Transmits page and event data to TikTok.</td>
+        <td><code>analytics.tiktok.com</code></td>
       </tr></tbody></table></div>
+    <p class="muted"><strong>Also observed, and not counted as findings:</strong>
+           Meta Pixel, Google Analytics. These requests carried a signal that consent was denied
+           (Google Consent Mode or Limited Data Use), which is the designed behaviour.</p>
   </section>
 
   <section class="pass">
     <h3>Pass 3 — After clicking the reject control</h3>
     <p class="muted">The consent banner’s reject control was clicked. Only requests sent after that click are listed.</p>
-    <div class="tablewrap"><table><thead><tr><th>Service</th><th>What it does</th><th>Endpoint</th></tr></thead>
-           <tbody>
-      <tr>
-        <td><strong>Meta Pixel</strong><div class="muted">ad-pixel</div></td>
-        <td>Transmits page and event data to Meta, keyed to a user identifier.</td>
-        <td><code>www.facebook.com</code></td>
-      </tr></tbody></table></div>
+    <p class="ok">No third-party trackers observed in this pass without a consent signal.</p>
+    
   </section>
 
 <h2>Suggested remediation</h2>

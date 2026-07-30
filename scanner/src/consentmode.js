@@ -212,7 +212,7 @@ const US_PRIVACY_CHARACTER = { Y: true, N: false, '-': null };
 export function decodeUsPrivacyString(value) {
   const raw = typeof value === 'string' ? value.trim() : '';
 
-  if (!/^[0-9][YNyNn-]{3}$/i.test(raw)) {
+  if (!/^[0-9][YN-]{3}$/i.test(raw)) {
     return {
       valid: false,
       raw: raw || null,
@@ -631,9 +631,9 @@ export function detectPrivacyStrings(requestUrl) {
  * affirmative state, null = the framework is present but says nothing conclusive.
  */
 function verdictForGoogle(googleSignals) {
-  if (googleSignals.adStorage === false && googleSignals.analyticsStorage === false) return true;
-  if (googleSignals.adStorage === true && googleSignals.analyticsStorage === true) return false;
-  if (googleSignals.adStorage === false || googleSignals.analyticsStorage === false) return true;
+  const { adStorage, analyticsStorage } = googleSignals;
+  if (adStorage === false || analyticsStorage === false) return true;
+  if (adStorage === true && analyticsStorage === true) return false;
   return null;
 }
 
@@ -664,6 +664,12 @@ function verdictForGpp(gpp) {
  * Conflicting frameworks resolve toward denial on purpose: the consequence of resolving
  * toward denial is that the engine keeps quiet about a request, and the consequence of
  * resolving the other way is that it accuses a company on contested evidence.
+ *
+ * Note the deliberate difference from assessTrackerRequest. This function answers "does the
+ * request carry any denial at all", so a mixed Consent Mode value such as gcs=G101 reads as
+ * denied here. assessTrackerRequest answers the narrower and more useful question, "does it
+ * deny the thing this particular tracker does", and reads the digit that governs that
+ * tracker. The two can disagree on mixed values, and that is correct rather than a bug.
  *
  * @param {string} requestUrl
  * @returns {{framework: string|null, frameworks: string[], signals: object,
@@ -725,10 +731,9 @@ export function parseConsentSignals(requestUrl) {
     signals.tcf = tcf ?? { raw: tcfRaw, decoded: false };
     raw.gdpr_consent = tcfRaw;
     if (params.has('gdpr')) raw.gdpr = params.get('gdpr');
-    verdicts.set(
-      FRAMEWORK.TCF,
-      tcf ? (tcf.deviceStorageConsent ? false : true) : null
-    );
+    // A readable TC String with Purpose 1 unset is a denial of device storage, which every
+    // tracker in the corpus needs. An unreadable one says nothing.
+    verdicts.set(FRAMEWORK.TCF, tcf ? tcf.deviceStorageConsent !== true : null);
   }
 
   if (verdicts.size === 0) return empty;
@@ -759,6 +764,22 @@ function purposeForCategory(category) {
   if (ADVERTISING_CATEGORIES.has(category)) return 'advertising';
   if (ANALYTICS_CATEGORIES.has(category)) return 'analytics';
   return 'other';
+}
+
+/**
+ * The Consent Mode storage state that governs this tracker, as true (granted), false
+ * (denied) or null (nothing conclusive).
+ *
+ * Consent Mode has no storage type covering session replay or customer-success tooling, so
+ * for those the only readable answer is a blanket state across both types. Reading a mixed
+ * gcs value as if it applied to them would be inventing a signal Google never sent.
+ */
+function googleStateForPurpose({ adStorage, analyticsStorage }, purpose) {
+  if (purpose === 'advertising') return adStorage;
+  if (purpose === 'analytics') return analyticsStorage;
+  if (adStorage === false && analyticsStorage === false) return false;
+  if (adStorage === true && analyticsStorage === true) return true;
+  return null;
 }
 
 /**
@@ -794,33 +815,21 @@ export function assessTrackerRequest(requestUrl, trackerMeta = {}) {
 
   const google = parsed.signals.googleConsentMode;
   if (google) {
-    const relevant =
-      purpose === 'advertising'
-        ? google.adStorage
-        : purpose === 'analytics'
-          ? google.analyticsStorage
-          // Consent Mode has no storage type covering session replay or customer-success
-          // tools, so only a blanket denial across both types is meaningful for them.
-          : google.adStorage === false && google.analyticsStorage === false
-            ? false
-            : google.adStorage === true && google.analyticsStorage === true
-              ? true
-              : null;
+    const relevant = googleStateForPurpose(google, purpose);
+    const storageName =
+      purpose === 'analytics'
+        ? 'analytics_storage'
+        : purpose === 'advertising'
+          ? 'ad_storage'
+          : 'both ad_storage and analytics_storage';
 
-    const storageName = purpose === 'analytics' ? 'analytics_storage' : 'ad_storage';
-    if (relevant === false) {
-      denials.push({
+    if (relevant === false || relevant === true) {
+      const sentence =
+        `${label} carried Google Consent Mode parameter gcs=${google.gcs}, which tells Google ` +
+        `that consent for ${storageName} was ${relevant ? 'granted' : 'denied'} for this hit.`;
+      (relevant ? grants : denials).push({
         framework: FRAMEWORK.GOOGLE_CONSENT_MODE,
-        text:
-          `${label} carried Google Consent Mode parameter gcs=${google.gcs}, which tells ` +
-          `Google that ${storageName} consent was denied for this hit.`,
-      });
-    } else if (relevant === true) {
-      grants.push({
-        framework: FRAMEWORK.GOOGLE_CONSENT_MODE,
-        text:
-          `${label} carried Google Consent Mode parameter gcs=${google.gcs}, which tells ` +
-          `Google that ${storageName} consent was granted for this hit.`,
+        text: sentence,
       });
     }
   }

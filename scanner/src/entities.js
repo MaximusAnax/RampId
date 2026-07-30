@@ -26,6 +26,7 @@ import { parse } from 'tldts';
 
 const { getEntity } = thirdPartyWeb;
 import { TRACKERS, CMPS, SEVERITY_RANK } from './trackers.js';
+import { assessTrackerRequest } from './consentmode.js';
 
 /**
  * third-party-web categories that represent third-party data collection worth reporting.
@@ -179,11 +180,42 @@ export function classifyAll(urls, { pageHost = null, sampleLimit = 5 } = {}) {
     }
   }
 
+  // Annotate each service with what its own requests advertised about consent.
+  //
+  // This is the difference between a defensible finding and a false accusation. Google
+  // Consent Mode and Meta's Limited Data Use let a tag fire while transmitting a signal
+  // that consent was denied — that is the designed, compliant behaviour, not a failure.
+  // Reporting those as violations is the fastest way to be dismissed by the one reader
+  // who matters: the engineer asked to check the claim.
+  //
+  // A service counts as having signalled denial only when EVERY observed request did.
+  // One unsignalled request is enough to make the service reportable, because that request
+  // carried no restriction.
+  for (const tracker of trackers.values()) {
+    const assessments = tracker.requests.map((u) => assessTrackerRequest(u, tracker));
+    const statuses = assessments.map((a) => a.status);
+
+    tracker.consentSignal = statuses.every((s) => s === 'signalled-denied')
+      ? 'signalled-denied'
+      : statuses.some((s) => s === 'signalled-granted')
+        ? 'signalled-granted'
+        : 'unknown';
+
+    tracker.consentSignalExplanation = assessments[0]?.explanation ?? null;
+  }
+
   const rank = (t) => SEVERITY_RANK[t.severity] ?? 0;
+  const all = [...trackers.values()].sort(
+    (a, b) => rank(b) - rank(a) || a.name.localeCompare(b.name)
+  );
+
   return {
-    trackers: [...trackers.values()].sort(
-      (a, b) => rank(b) - rank(a) || a.name.localeCompare(b.name)
-    ),
+    trackers: all,
+    // Services that consistently signalled denial are separated rather than dropped: they
+    // belong in the report as context ("these fired but restricted themselves"), just not
+    // in the findings.
+    reportable: all.filter((t) => t.consentSignal !== 'signalled-denied'),
+    restrained: all.filter((t) => t.consentSignal === 'signalled-denied'),
     cmps: [...cmps.values()],
   };
 }

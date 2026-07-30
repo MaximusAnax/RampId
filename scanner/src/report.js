@@ -54,6 +54,15 @@ function passBlock(title, pass, explanation) {
     )
     .join('');
 
+  // Services that fired but transmitted a consent-denied signal are listed separately and
+  // explicitly not counted as findings. Google Consent Mode and Meta's Limited Data Use are
+  // designed to work exactly this way, so presenting them as problems would be wrong — but
+  // omitting them entirely would look like the scan missed requests the client's own
+  // engineer can see in their network tab.
+  const restrained = (pass.restrained ?? [])
+    .map((t) => esc(t.name))
+    .join(', ');
+
   return `
   <section class="pass">
     <h3>${esc(title)}</h3>
@@ -62,7 +71,14 @@ function passBlock(title, pass, explanation) {
       pass.trackers.length
         ? `<div class="tablewrap"><table><thead><tr><th>Service</th><th>What it does</th><th>Endpoint</th></tr></thead>
            <tbody>${rows}</tbody></table></div>`
-        : '<p class="ok">No third-party trackers observed in this pass.</p>'
+        : '<p class="ok">No third-party trackers observed in this pass without a consent signal.</p>'
+    }
+    ${
+      restrained
+        ? `<p class="muted"><strong>Also observed, and not counted as findings:</strong>
+           ${restrained}. These requests carried a signal that consent was denied
+           (Google Consent Mode or Limited Data Use), which is the designed behaviour.</p>`
+        : ''
     }
   </section>`;
 }

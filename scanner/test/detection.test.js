@@ -151,3 +151,40 @@ test('malformed and non-http URLs are ignored rather than throwing', () => {
   assert.equal(classifyRequest('about:blank', 'x.com'), null);
   assert.equal(classifyRequest('not a url at all', 'x.com'), null);
 });
+
+test('a tag that signals consent denied is not reported as a finding', () => {
+  // Google Consent Mode and Meta Limited Data Use are designed so a tag can fire while
+  // transmitting that consent was denied. That is compliant behaviour. Reporting it as a
+  // violation is the fastest way to be dismissed by the engineer asked to check the claim,
+  // and Privado found 48% of top sites misconfigure Consent Mode — so distinguishing
+  // correctly-configured from misconfigured is the whole value of this check.
+  const r = classifyAll(
+    [
+      'https://www.google-analytics.com/g/collect?v=2&gcs=G100&gcd=11p1p1p1',
+      'https://www.facebook.com/tr?id=1&ev=PageView&dpo=LDU&dpoco=1&dpost=1000',
+      'https://analytics.tiktok.com/i18n/pixel/events.js?sdkid=1',
+    ],
+    { pageHost: 'shop.example.com' }
+  );
+
+  const restrained = r.restrained.map((t) => t.name);
+  assert.ok(restrained.includes('Google Analytics'));
+  assert.ok(restrained.includes('Meta Pixel'));
+
+  const reportable = r.reportable.map((t) => t.name);
+  assert.deepEqual(reportable, ['TikTok Pixel'], 'only the unsignalled tag is reportable');
+});
+
+test('one unsignalled request makes a service reportable', () => {
+  // Partial configuration is the common real-world case: a tag correctly restricted on one
+  // route and not on another. The unrestricted request is the one that matters.
+  const r = classifyAll(
+    [
+      'https://www.google-analytics.com/g/collect?v=2&gcs=G100',
+      'https://www.google-analytics.com/g/collect?v=2&cid=abc',
+    ],
+    { pageHost: 'shop.example.com' }
+  );
+  assert.equal(r.reportable.length, 1);
+  assert.equal(r.restrained.length, 0);
+});

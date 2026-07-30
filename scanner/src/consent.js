@@ -161,16 +161,23 @@ export async function scanConsent(url, opts = {}) {
   }
 }
 
+const trackerView = (t) => ({
+  name: t.name,
+  category: t.category,
+  severity: t.severity,
+  evidence: t.evidence,
+  consentSignal: t.consentSignal,
+  sample: t.requests[0] ?? null,
+});
+
 const summarise = (cls, pass) => ({
   observedRequestCount: pass.observedRequestCount ?? pass.requests.length,
-  trackerCount: cls.trackers.length,
-  trackers: cls.trackers.map((t) => ({
-    name: t.name,
-    category: t.category,
-    severity: t.severity,
-    evidence: t.evidence,
-    sample: t.requests[0] ?? null,
-  })),
+  trackerCount: cls.reportable.length,
+  trackers: cls.reportable.map(trackerView),
+  // Services that fired but signalled that consent was denied. Kept visible as context so
+  // the report can say "these restricted themselves" rather than appearing to have missed
+  // requests the client's own engineer can see in the network tab.
+  restrained: cls.restrained.map(trackerView),
   requestCount: pass.requests.length,
   error: pass.error,
 });
@@ -179,20 +186,20 @@ function buildFindings({ A, B, C, reject, consentPlatforms, bannerVisible }) {
   const findings = [];
   const hasCmp = consentPlatforms.length > 0;
 
-  if (A.trackers.length) {
+  if (A.reportable.length) {
     findings.push({
       id: 'PRE_CONSENT',
-      severity: worstSeverity(A.trackers),
-      title: `${A.trackers.length} third-party tracker(s) fired before any consent interaction`,
+      severity: worstSeverity(A.reportable),
+      title: `${A.reportable.length} third-party tracker(s) fired before any consent interaction`,
       detail: hasCmp
         ? `A consent platform (${consentPlatforms.join(', ')}) is deployed, yet these ` +
           'trackers transmitted before the visitor made any choice.'
         : 'No consent management platform was detected on the page.',
-      trackers: A.trackers.map((t) => t.name),
+      trackers: A.reportable.map((t) => t.name),
     });
   }
 
-  const gpcIgnored = B.trackers.filter((t) => SEVERITY_RANK[t.severity] >= 2);
+  const gpcIgnored = B.reportable.filter((t) => SEVERITY_RANK[t.severity] >= 2);
   if (gpcIgnored.length) {
     findings.push({
       id: 'GPC_IGNORED',
@@ -206,22 +213,22 @@ function buildFindings({ A, B, C, reject, consentPlatforms, bannerVisible }) {
     });
   }
 
-  if (reject.rejectClicked && C.trackers.length) {
+  if (reject.rejectClicked && C.reportable.length) {
     findings.push({
       id: 'REJECT_IGNORED',
       severity: 'critical',
-      title: `${C.trackers.length} tracker(s) continued firing after the reject control was clicked`,
+      title: `${C.reportable.length} tracker(s) continued firing after the reject control was clicked`,
       detail:
         'The consent banner offered a reject control, it was clicked, and these trackers ' +
         'transmitted afterwards. This contradicts the choice the site itself presented.',
-      trackers: C.trackers.map((t) => t.name),
+      trackers: C.reportable.map((t) => t.name),
     });
   }
 
   // Gate on bannerVisible, not just on recognising a named platform. A bespoke or
   // self-hosted banner is a real consent mechanism even when no signature matches it, and
   // claiming otherwise is a factual error the reader can disprove instantly.
-  if (!hasCmp && !bannerVisible && A.trackers.length) {
+  if (!hasCmp && !bannerVisible && A.reportable.length) {
     findings.push({
       id: 'NO_CMP',
       severity: 'high',
