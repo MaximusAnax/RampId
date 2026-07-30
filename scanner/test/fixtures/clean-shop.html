@@ -1,0 +1,15 @@
+<!doctype html><html><head><title>Fern & Fig — Checkout</title>
+<script src="https://cdn.cookielaw.org/scripttemplates/otSDKStub.js"></script>
+</head><body>
+<h1>Fern &amp; Fig</h1>
+<div id="onetrust-banner-sdk"><p>We use cookies.</p>
+  <button id="a">Accept All</button><button id="r">Reject All</button></div>
+<script>
+  document.getElementById('r').addEventListener('click', function(){
+    document.getElementById('onetrust-banner-sdk').style.display='none';
+  });
+  // Analytics only loads after an explicit accept.
+  document.getElementById('a').addEventListener('click', function(){
+    new Image().src = "https://www.google-analytics.com/collect?v=1";
+  });
+</script></body></html>

@@ -1,0 +1,24 @@
+<!doctype html><html><head><title>Aurora Outfitters — Checkout</title>
+<script src="https://cdn.cookielaw.org/scripttemplates/otSDKStub.js"></script>
+<script src="https://connect.facebook.net/en_US/fbevents.js"></script>
+<script src="https://analytics.tiktok.com/i18n/pixel/events.js"></script>
+<script src="https://www.googletagmanager.com/gtag/js?id=G-TEST"></script>
+<script src="https://static.hotjar.com/c/hotjar-123.js"></script>
+</head><body>
+<h1>Aurora Outfitters</h1><p>Checkout</p>
+<div id="onetrust-banner-sdk">
+  <p>We use cookies.</p>
+  <button id="onetrust-accept-btn-handler">Accept All</button>
+  <button id="onetrust-reject-all-handler">Reject All</button>
+</div>
+<script>
+  // Fires regardless of the banner - the exact pattern that drives CIPA filings.
+  new Image().src = "https://www.facebook.com/tr?id=999&ev=PageView";
+  new Image().src = "https://ct.pinterest.com/v3/?event=pagevisit";
+  document.getElementById('onetrust-reject-all-handler').addEventListener('click', function(){
+    document.getElementById('onetrust-banner-sdk').style.display='none';
+    // Keeps firing after the user says no.
+    new Image().src = "https://www.facebook.com/tr?id=999&ev=PostReject";
+    new Image().src = "https://bat.bing.com/action/0?ti=123";
+  });
+</script></body></html>
