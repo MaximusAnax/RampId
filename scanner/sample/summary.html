@@ -1,0 +1,156 @@
+<title>Compliance evidence business — decision and build summary</title>
+<style>
+  :root { --ink:#101828; --muted:#667085; --line:#e4e7ec; --bg:#fff; --panel:#f9fafb;
+          --accent:#175cd3; --good:#067647; --bad:#b42318; }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink:#e4e7ec; --muted:#98a2b3; --line:#1d2939; --bg:#0c111d; --panel:#141b2d;
+            --accent:#84caff; --good:#75e0a7; --bad:#fda29b; }
+  }
+  :root[data-theme="light"] { --ink:#101828; --muted:#667085; --line:#e4e7ec; --bg:#fff;
+            --panel:#f9fafb; --accent:#175cd3; --good:#067647; --bad:#b42318; }
+  :root[data-theme="dark"] { --ink:#e4e7ec; --muted:#98a2b3; --line:#1d2939; --bg:#0c111d;
+            --panel:#141b2d; --accent:#84caff; --good:#75e0a7; --bad:#fda29b; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:3rem 1.25rem 5rem; background:var(--bg); color:var(--ink);
+    font:16px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  .wrap { max-width:54rem; margin:0 auto; }
+  h1 { font-size:2rem; letter-spacing:-.025em; margin:0 0 .5rem; }
+  h2 { font-size:1.15rem; letter-spacing:-.01em; margin:3rem 0 .9rem;
+       padding-bottom:.4rem; border-bottom:1px solid var(--line); }
+  .lede { font-size:1.08rem; color:var(--muted); margin:0 0 2.5rem; }
+  .answer { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--accent);
+    border-radius:.5rem; padding:1.25rem 1.4rem; margin-bottom:2rem; }
+  .answer p { margin:.4rem 0 0; }
+  .answer strong { color:var(--accent); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(11rem,1fr)); gap:.75rem; margin:1rem 0; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:.5rem; padding:.9rem 1rem; }
+  .stat b { display:block; font-size:1.5rem; letter-spacing:-.02em; }
+  .stat span { font-size:.82rem; color:var(--muted); }
+  .tablewrap { overflow-x:auto; margin:1rem 0; }
+  table { width:100%; border-collapse:collapse; font-size:.9rem; }
+  th,td { text-align:left; padding:.55rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:.74rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  code { font:.85em ui-monospace,SFMono-Regular,Menlo,monospace; }
+  ul { padding-left:1.2rem; } li { margin:.4rem 0; }
+  .bad { color:var(--bad); font-weight:600; }
+  .good { color:var(--good); font-weight:600; }
+  .note { background:var(--panel); border:1px solid var(--line); border-radius:.5rem;
+    padding:1rem 1.2rem; font-size:.9rem; color:var(--muted); margin-top:1rem; }
+</style>
+
+<div class="wrap">
+
+<h1>Compliance evidence business</h1>
+<p class="lede">Decision and build summary · 30 July 2026</p>
+
+<div class="answer">
+  <strong>The business:</strong>
+  <p>Scan a company's public website three times — untouched, with Global Privacy Control
+  enabled, and after clicking its own reject button — and sell the resulting evidence, then
+  monitor it monthly. Nothing is required from the company, which is what lets it skip the
+  security review that kills unknown vendors.</p>
+  <p style="margin-top:.8rem"><strong>The metric it was chosen on:</strong> profit per hour
+  of your time, not revenue. Two candidates projecting <em>three times</em> the revenue were
+  rejected because delivery hours scale linearly with clients.</p>
+</div>
+
+<div class="grid">
+  <div class="stat"><b>~40</b><span>businesses evaluated</span></div>
+  <div class="stat"><b>259</b><span>tests, all passing</span></div>
+  <div class="stat"><b>17</b><span>modules built</span></div>
+  <div class="stat"><b>~$204k</b><span>realistic year one</span></div>
+</div>
+
+<h2>What the adversarial validation changed</h2>
+
+<p>The plan was attacked by independent researchers and skeptics. These are the corrections
+that survived verification — the most valuable output of the whole exercise.</p>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th>The plan said</th><th>What is actually true</th></tr></thead>
+  <tbody>
+    <tr><td>Lead with tracking pixels and lawsuit counts</td>
+        <td><span class="bad">Would have converted at zero.</span> That opening is formally
+        identical to the demand letters plaintiff firms send weekly; counsel train recipients
+        to forward and never reply. Leads now with the § 7025(c)(6) display requirement —
+        same scan, opposite category.</td></tr>
+    <tr><td>"This urgency cannot be legislated away"</td>
+        <td>Half wrong. SB 690 would retroactively wipe pending § 638.51 claims. But it
+        reaches only §§ 638.50/638.51, § 631 survives, and it is operative January 2027 at
+        the earliest.</td></tr>
+    <tr><td>Plaintiffs are the engine</td>
+        <td>The <em>regulator</em> is, and its obligations are getting stronger (may→shall,
+        AB 566) while litigation thins.</td></tr>
+    <tr><td>Sell insurers a risk feed</td>
+        <td>Slot taken. LOKKER/Bitsight partnered March 2025; Coalition built it in-house.</td></tr>
+    <tr><td>Law firms as a revenue-share channel</td>
+        <td>Barred. Model Rule 5.4(a) prohibits sharing legal fees with non-lawyers. Only an
+        unpaid mutual referral works.</td></tr>
+    <tr><td>Monitoring at $3–6k/month · $480k year one</td>
+        <td>2–3× too high. <span class="good">$1,250–1,500/domain</span>, ≈$204k year one.</td></tr>
+    <tr><td>Blacklight is the free-tool threat</td>
+        <td>It isn't — source-verified, no GPC or banner interaction at all. I was defending
+        against the wrong tool.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Bugs found, every one of which looked like good news</h2>
+
+<p>This is the category that matters, because none of these announce themselves. Each was
+found by testing against reality rather than against my own fixtures.</p>
+
+<ul>
+  <li><strong>Chromium silently inherits the system proxy.</strong> Behind any corporate
+  proxy, sub-resources fail to load, every tracker looks absent, and <em>every site scans
+  clean</em>.</li>
+  <li><strong>The lead finding accused compliant sites.</strong> Consent detection ran at
+  DOMContentLoaded, before any real platform renders its banner. Static fixtures hid it
+  completely; a fixture that renders on a timer now fails without the fix.</li>
+  <li><strong>A bot challenge scored as a perfect clean scan</strong> — and in monitoring,
+  a client who started blocking us would have been told every finding was resolved.</li>
+  <li><strong>One failed cycle erased all drift across it</strong>, permanently, reported as
+  "unchanged".</li>
+  <li><strong>A new tracker with no new finding ID was filed as "quiet"</strong> — the single
+  most common real regression, which would have hollowed out the retainer.</li>
+  <li><strong>Consent verdicts were computed from five retained samples</strong>, so a sixth
+  unrestricted request — the only one that mattered — was never examined.</li>
+</ul>
+
+<h2>What is built</h2>
+
+<p>One command turns a target list into a ranked queue with evidence reports and drafted
+first messages, scored by how much of your attention each actually deserves:</p>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Command</th><th>Does</th></tr></thead>
+  <tbody>
+    <tr><td><code>campaign</code></td><td>Target list → ranked queue, reports, drafts, sector index</td></tr>
+    <tr><td><code>monitor</code></td><td>Re-scan, diff, alert only on what moved — the retainer</td></tr>
+    <tr><td><code>consent</code></td><td>Three-pass evidence for one target</td></tr>
+    <tr><td><code>ai50</code></td><td>EU AI Act Article 50 disclosure, on the same crawler</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Safety is enforced in code, not by discipline: the outreach generator throws on any legal
+conclusion, ambiguity always resolves to "needs review" rather than an accusation, and a tag
+that correctly signals consent denied is never reported as a problem.</p>
+
+<h2>The one thing not yet known</h2>
+
+<div class="note">
+  <p style="margin-top:0"><strong>The engine has never run against a live website.</strong>
+  This sandbox blocks arbitrary egress, so detection is validated against fixtures that
+  reproduce real consent-manager markup — but the real-world failure rate is inferred from
+  published surveys, not measured.</p>
+  <p>Task one, before any outreach: scan 300–500 live domains and measure four numbers.
+  Decision rules are already set — if post-reject failure is under 20% the reject hook is not
+  a business and the GPC pass leads instead; if false positives exceed 2%, send nothing until
+  it is fixed.</p>
+  <p style="margin-bottom:0">Everything else in the plan is downstream of that measurement.</p>
+</div>
+
+</div>
