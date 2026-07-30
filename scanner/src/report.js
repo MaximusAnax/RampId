@@ -14,6 +14,8 @@
  *      in under five minutes, or it will be dismissed rather than acted on.
  */
 
+import { corpusStats } from './entities.js';
+
 const ENFORCEMENT_CONTEXT = [
   { who: 'Disney / ABC', amount: '$2.75M', when: 'Feb 2026' },
   { who: 'PlayOn Sports', amount: '$1.1M', when: 'Q1 2026' },
@@ -58,8 +60,8 @@ function passBlock(title, pass, explanation) {
     <p class="muted">${esc(explanation)}</p>
     ${
       pass.trackers.length
-        ? `<table><thead><tr><th>Service</th><th>What it does</th><th>Endpoint</th></tr></thead>
-           <tbody>${rows}</tbody></table>`
+        ? `<div class="tablewrap"><table><thead><tr><th>Service</th><th>What it does</th><th>Endpoint</th></tr></thead>
+           <tbody>${rows}</tbody></table></div>`
         : '<p class="ok">No third-party trackers observed in this pass.</p>'
     }
   </section>`;
@@ -67,12 +69,8 @@ function passBlock(title, pass, explanation) {
 
 export function renderReport(scan, { company = null } = {}) {
   const name = company || host(scan.url);
+  const corpus = corpusStats();
   const findings = scan.findings || [];
-  const worst = findings.some((f) => f.severity === 'critical')
-    ? 'critical'
-    : findings.length
-      ? 'high'
-      : 'none';
 
   const findingCards = findings
     .map((f) => {
@@ -141,7 +139,13 @@ export function renderReport(scan, { company = null } = {}) {
 <div class="score">
   <b>${scan.riskScore}</b>
   <span class="muted">exposure score out of 100 &middot; ${findings.length} finding(s)
-  &middot; consent platform: ${scan.cmp?.length ? esc(scan.cmp.join(', ')) : 'none detected'}</span>
+  &middot; consent mechanism: ${
+    scan.cmp?.length
+      ? esc(scan.cmp.join(', '))
+      : scan.bannerVisible
+        ? 'banner present, platform not identified'
+        : 'none detected'
+  }</span>
 </div>
 
 <p>This report records what a browser actually transmitted when it loaded
@@ -152,7 +156,6 @@ ${findings.length ? `<h2>What we observed</h2>${findingCards}` : '<h2>What we ob
 
 <h2>Method</h2>
 <p class="muted">Three independent page loads, each with a clean browser profile.</p>
-<div class="tablewrap">
 ${passBlock(
   'Pass 1 — Baseline, no interaction',
   scan.passes.baseline,
@@ -170,7 +173,6 @@ ${passBlock(
     ? 'The consent banner’s reject control was clicked. Only requests sent after that click are listed.'
     : 'No reject control could be found on the consent banner, so this pass could not be completed.'
 )}
-</div>
 
 <h2>Suggested remediation</h2>
 <ol class="fix">
@@ -189,14 +191,32 @@ ${passBlock(
 tracking and opt-out handling:</p>
 <ul>${enforcement}</ul>
 
+<h2>What this method cannot see</h2>
+<p class="muted">Stated plainly, because a report that overclaims is easy to dismiss in full.</p>
+<ul>
+  <li><strong>Server-side tagging.</strong> Tags routed through your own domain, or through a
+      server-side container, are indistinguishable from ordinary first-party traffic when
+      observed from outside. Data can be forwarded to third parties without appearing here.</li>
+  <li><strong>First-party proxied and CNAME-cloaked trackers.</strong> Same limitation: a
+      tracker served from a subdomain of your own site will not be counted as third-party.</li>
+  <li><strong>One page, one moment.</strong> Only the URL named above was tested, on the date
+      shown. Behaviour commonly differs on checkout, account and search pages.</li>
+  <li><strong>Geography and segmentation.</strong> The page was loaded from a single location
+      with a single profile. Sites frequently vary tag behaviour by region or audience.</li>
+  <li><strong>Consent signalling.</strong> A tag firing is not by itself evidence that personal
+      data was shared. Some tags fire while transmitting a signal that consent was denied. Where
+      that signal was detectable it is noted; where it was not, the observation is reported as
+      what it is — a request that was sent.</li>
+</ul>
+
 <div class="note">
-  <strong>Scope and limitations.</strong> This is a technical observation of network behaviour on
-  a single page at a single point in time, produced by automated testing from outside your
-  systems. It is not legal advice and states no conclusion about your legal position or
-  compliance status. Whether any observation here carries legal significance depends on facts
-  not visible from outside — your data-sharing agreements, the categories of data involved, and
-  your users' jurisdictions. Those questions are for qualified counsel. Automated detection can
-  also miss trackers loaded conditionally or on pages not tested.
+  <strong>Scope.</strong> This is a technical observation of network behaviour produced by
+  automated testing from outside your systems, using ${esc(String(corpus.curatedTrackers))}
+  curated service fingerprints supplemented by a public dataset of ${esc(String(corpus.broadEntities))}
+  categorized third-party entities. It is not legal advice and states no conclusion about your
+  legal position or compliance status. Whether any observation here carries legal significance
+  depends on facts not visible from outside — your data-sharing agreements, the categories of
+  data involved, and your users' jurisdictions. Those questions are for qualified counsel.
 </div>
 
 </div></body></html>`;

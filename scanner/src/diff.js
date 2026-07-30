@@ -844,6 +844,11 @@ export function summarizeDrift(diff) {
       ? `The exposure score moved from ${diff.riskScore.previous} to ${diff.riskScore.current}.`
       : null;
 
+  // Backstop against an alert that announces a change and then describes nothing. Any
+  // future change kind that has no prose of its own still gets stated in the body.
+  fillFromDescriptions(regressionSentences, diff.changes, MATERIALITY.REGRESSION);
+  fillFromDescriptions(improvementSentences, diff.changes, MATERIALITY.IMPROVEMENT);
+
   const body = paragraphs([
     regressionSentences.join(' '),
     improvementSentences.join(' '),
@@ -862,14 +867,23 @@ const CLOSING_LINE =
 
 const paragraphs = (parts) => parts.filter((part) => part && part.trim()).join('\n\n');
 
+function fillFromDescriptions(sentences, changes, materiality) {
+  if (sentences.length) return;
+  for (const change of changes) {
+    if (change.materiality === materiality) sentences.push(change.description);
+  }
+}
+
 function changedSubject(diff, host, added, removed) {
   if (diff.materiality === MATERIALITY.REGRESSION) {
+    // Regressions lead with the gravest pass; that is the sentence the reader has to see
+    // before deciding whether to open the mail.
     const group = added[0];
     if (group) {
       const detail =
         group.names.length === 1
-          ? `${group.names[0]} now fires ${PASS_PHRASE_PRESENT[group.pass]}`
-          : `${group.names.length} trackers now fire ${PASS_PHRASE_PRESENT[group.pass]}`;
+          ? `${group.names[0]} now fires ${PASS_PHRASE_PRESENT[group.worstPass]}`
+          : `${group.names.length} trackers now fire ${PASS_PHRASE_PRESENT[group.worstPass]}`;
       return `New tracking on ${host} — ${detail}`;
     }
     const finding = [...diff.newFindings].sort((a, b) => b.rank - a.rank)[0];
@@ -881,12 +895,14 @@ function changedSubject(diff, host, added, removed) {
     return `Consent configuration changed on ${host}`;
   }
 
+  // Improvements lead with the earliest pass instead: a tracker that stops firing on load
+  // necessarily stops firing in the later passes too, so that is the fuller statement.
   if (diff.materiality === MATERIALITY.IMPROVEMENT) {
     const group = removed[0];
     const detail = group
       ? group.names.length === 1
-        ? `${group.names[0]} no longer fires ${PASS_PHRASE_PRESENT[group.pass]}`
-        : `${group.names.length} trackers no longer fire ${PASS_PHRASE_PRESENT[group.pass]}`
+        ? `${group.names[0]} no longer fires ${PASS_PHRASE_PRESENT[group.leadPass]}`
+        : `${group.names.length} trackers no longer fire ${PASS_PHRASE_PRESENT[group.leadPass]}`
       : 'fewer observations than the previous check';
     return `Tracking reduced on ${host} — ${detail}`;
   }

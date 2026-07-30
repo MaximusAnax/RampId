@@ -215,7 +215,12 @@ test('a tracker that starts surviving the reject click outranks every other chan
 
   const { subject, body } = summarizeDrift(diff);
   assert.match(subject, /Meta Pixel now fires after a visitor clicks reject/);
-  assert.match(body, /after a visitor clicks reject/);
+  assert.match(body, /Meta Pixel began firing after the reject control was clicked/);
+  // The post-reject sentence must come first in the body, ahead of the new critical
+  // tracker in the baseline pass.
+  assert.ok(body.indexOf('Meta Pixel') < body.indexOf('Hotjar'));
+  // REJECT_IGNORED restates in general terms what the sentence above already said.
+  assert.doesNotMatch(body, /Trackers now continue to transmit after/);
 });
 
 test('a finding that disappears is reported as an improvement, not as new tracking', () => {
