@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tracking &amp; consent index — US retail</title>
+<style>
+  :root { --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#ffffff; --panel:#f8fafc;
+    --bar:#94a3b8; --barstrong:#475569; }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink:#e2e8f0; --muted:#94a3b8; --line:#1e293b; --bg:#0b1120; --panel:#111827;
+      --bar:#475569; --barstrong:#94a3b8; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:2.5rem 1.25rem 4rem; background:var(--bg); color:var(--ink);
+    font:16px/1.65 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  .wrap { max-width:56rem; margin:0 auto; }
+  h1 { font-size:1.9rem; margin:0 0 .35rem; letter-spacing:-.02em; }
+  h2 { font-size:1.2rem; margin:2.5rem 0 .75rem; letter-spacing:-.01em; }
+  h3 { font-size:1rem; margin:1.75rem 0 .4rem; }
+  h4 { font-size:.9rem; margin:0 0 .3rem; }
+  p { margin:.6rem 0; }
+  .muted { color:var(--muted); font-size:.9rem; }
+  .lede { font-size:1.05rem; color:var(--muted); margin:0 0 1.75rem; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(14rem,1fr)); gap:.85rem; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:.6rem;
+    padding:1.1rem 1.15rem; }
+  .stat b { display:block; font-size:2.1rem; letter-spacing:-.03em; line-height:1.1; }
+  .stat p { margin:.4rem 0 0; font-size:.92rem; }
+  .bars { margin:.9rem 0 1.2rem; }
+  .barrow { display:grid; grid-template-columns:minmax(0,1fr) minmax(6rem,10rem) minmax(0,11rem);
+    gap:.6rem; align-items:center; padding:.35rem 0; border-bottom:1px solid var(--line); }
+  .barrow:last-child { border-bottom:0; }
+  .barlabel { font-size:.9rem; }
+  .barvalue { font-size:.85rem; text-align:right; }
+  .bartrack { background:var(--panel); border:1px solid var(--line); border-radius:.25rem;
+    height:.7rem; overflow:hidden; }
+  .barfill { background:var(--bar); height:100%; }
+  .barrow.strong .barfill { background:var(--barstrong); }
+  @media (max-width:34rem) {
+    .barrow { grid-template-columns:1fr; gap:.25rem; }
+    .barvalue { text-align:left; }
+  }
+  .spread { position:relative; height:2.4rem; margin:1rem 0 .2rem; }
+  .whisker { position:absolute; top:1.1rem; height:2px; background:var(--bar); }
+  .box { position:absolute; top:.45rem; height:1.4rem; background:var(--panel);
+    border:1px solid var(--barstrong); border-radius:.2rem; }
+  .median { position:absolute; top:.3rem; height:1.7rem; width:2px; background:var(--barstrong); }
+  .scale { display:flex; justify-content:space-between; font-size:.75rem; color:var(--muted); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(15rem,1fr)); gap:1.25rem; }
+  .tablewrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:.88rem; margin-top:.6rem;
+    min-width:24rem; }
+  th,td { text-align:left; padding:.5rem .6rem; border-bottom:1px solid var(--line);
+    vertical-align:top; }
+  th { font-size:.75rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+  td.num, th.num { text-align:right; white-space:nowrap; }
+  td.barcell { width:35%; min-width:6rem; }
+  td.barcell .bartrack { margin-top:.25rem; }
+  code { font:.82rem ui-monospace,SFMono-Regular,Menlo,monospace; word-break:break-all; }
+  ul,ol { padding-left:1.15rem; }
+  li { margin:.25rem 0; font-size:.92rem; }
+  ol.compact { margin:.35rem 0 0; }
+  .note { background:var(--panel); border:1px solid var(--line); border-radius:.6rem;
+    padding:1rem 1.15rem; font-size:.88rem; color:var(--muted); margin-top:2.5rem; }
+</style></head>
+<body><div class="wrap">
+
+<h1>Tracking &amp; consent index — US retail</h1>
+<p class="lede">August 2026 · 16 sites measured ·
+no individual company is named in this document</p>
+
+<p>This index records what browsers actually transmitted when they loaded the home page of each
+site in a sample of 16 companies. Every measurement was taken
+from the public internet. No company was contacted, no credentials were used, and no company's
+systems or data were accessed. The figures describe the sample in aggregate and support no
+conclusion about any individual company, including any company that believes it recognises itself
+here.</p>
+
+
+<h2>Headline figures</h2>
+<div class="stats">
+      <article class="stat">
+        <b>75%</b>
+        <p>of sites measured showed at least one observation</p>
+        <p class="muted">12 of 16</p>
+      </article>
+      <article class="stat">
+        <b>75%</b>
+        <p>of sites running a consent platform still transmitted to third parties before any consent interaction</p>
+        <p class="muted">12 of 16 sites with a platform</p>
+      </article>
+      <article class="stat">
+        <b>0%</b>
+        <p>of sites showing a consent banner had no reject control at banner level</p>
+        <p class="muted">0 of 16</p>
+      </article></div>
+
+<h2>What was observed, by type</h2>
+<p class="muted">Each bar is the share of measured sites on which that observation was recorded at
+least once. A site can appear in more than one row.</p>
+<div class="bars">
+  <div class="barrow">
+    <div class="barlabel">Third-party trackers transmitted before any consent interaction</div>
+    <div class="bartrack"><div class="barfill" style="width:75%"></div></div>
+    <div class="barvalue">75% <span class="muted">(12 of 16)</span></div>
+  </div>
+  <div class="barrow">
+    <div class="barlabel">Trackers continued transmitting with Global Privacy Control enabled</div>
+    <div class="bartrack"><div class="barfill" style="width:75%"></div></div>
+    <div class="barvalue">75% <span class="muted">(12 of 16)</span></div>
+  </div>
+  <div class="barrow">
+    <div class="barlabel">Trackers continued transmitting after the reject control was clicked</div>
+    <div class="bartrack"><div class="barfill" style="width:0%"></div></div>
+    <div class="barvalue">0% <span class="muted">(0 of 16)</span></div>
+  </div>
+  <div class="barrow">
+    <div class="barlabel">No consent mechanism could be identified on the page tested</div>
+    <div class="bartrack"><div class="barfill" style="width:0%"></div></div>
+    <div class="barvalue">0% <span class="muted">(0 of 16)</span></div>
+  </div>
+  <div class="barrow">
+    <div class="barlabel">No reject control could be found at banner level</div>
+    <div class="bartrack"><div class="barfill" style="width:0%"></div></div>
+    <div class="barvalue">0% <span class="muted">(0 of 16)</span></div>
+  </div></div>
+
+<h2>Sites running a consent platform</h2>
+<p>100% of measured sites
+(16 of 16) were running a consent platform that could be identified
+by name. Of those, 12
+(75%)
+transmitted to at least one third-party service before any consent interaction took place.</p>
+<p class="muted">Recorded because deploying a consent platform is a deliberate, paid decision: these
+sites had already concluded they needed consent management and had already bought a tool. The
+observation is about configuration and drift, not about the platforms themselves — a consent
+platform reports what a site declared, not what its browser did.</p>
+<div class="tablewrap"><table>
+        <thead><tr><th>Consent platform</th><th class="num">Sites</th><th class="num">Share</th></tr></thead>
+        <tbody><tr><td>OneTrust</td><td class="num">16 of 16</td><td class="num">100%</td></tr></tbody></table></div>
+
+<h2>Reject controls</h2>
+<p>16 of 16 measured sites presented a
+consent banner or an identifiable consent platform. On
+0 of 16 of those
+(0%) no reject or decline control
+could be found at the same level as accept by automated interaction.</p>
+<p class="muted">Read this figure as an upper bound on what automation could reach, not as a count of
+banners without a reject option. A control reachable only through a preferences dialog is not found
+by this method and would need a manual check before anything is concluded from it.</p>
+
+<h2>Exposure score distribution</h2>
+<p class="muted">The exposure score is this engine's own 0–100 summary of a single scan, weighted by
+the severity of what was observed. It is an internal ranking device, not a compliance rating, and it
+has no standing outside this dataset.</p>
+<div class="bars">
+  <div class="barrow">
+    <div class="barlabel">Exposure score 0 — nothing observed</div>
+    <div class="bartrack"><div class="barfill" style="width:25%"></div></div>
+    <div class="barvalue">25% <span class="muted">(4 of 16)</span></div>
+  </div>
+  <div class="barrow">
+    <div class="barlabel">Exposure score 1–24</div>
+    <div class="bartrack"><div class="barfill" style="width:0%"></div></div>
+    <div class="barvalue">0% <span class="muted">(0 of 16)</span></div>
+  </div>
+  <div class="barrow">
+    <div class="barlabel">Exposure score 25–49</div>
+    <div class="bartrack"><div class="barfill" style="width:0%"></div></div>
+    <div class="barvalue">0% <span class="muted">(0 of 16)</span></div>
+  </div>
+  <div class="barrow">
+    <div class="barlabel">Exposure score 50–74</div>
+    <div class="bartrack"><div class="barfill" style="width:75%"></div></div>
+    <div class="barvalue">75% <span class="muted">(12 of 16)</span></div>
+  </div>
+  <div class="barrow">
+    <div class="barlabel">Exposure score 75–100</div>
+    <div class="bartrack"><div class="barfill" style="width:0%"></div></div>
+    <div class="barvalue">0% <span class="muted">(0 of 16)</span></div>
+  </div></div>
+
+  <div class="spread" role="img" aria-label="Exposure scores range from 0 to 60, with a median of 60">
+    <div class="whisker" style="left:0%;width:60%"></div>
+    <div class="box" style="left:45%;width:15%"></div>
+    <div class="median" style="left:60%"></div>
+  </div>
+  <div class="scale"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
+  <p class="muted">Box spans the interquartile range (45–60);
+  the line marks the median (60); the rule spans the observed range
+  (0–60).</p>
+<div class="tablewrap"><table>
+  <thead><tr><th>Minimum</th><th>First quartile</th><th>Median</th><th>Third quartile</th><th>Maximum</th><th>Mean</th></tr></thead>
+  <tbody><tr>
+    <td>0</td>
+    <td>45</td>
+    <td>60</td>
+    <td>60</td>
+    <td>60</td>
+    <td>45</td>
+  </tr></tbody></table></div>
+
+<h2>Most prevalent third-party services</h2>
+<p class="muted">Counted once per site, across all three passes. A site loading the same pixel
+repeatedly counts once.</p>
+<div class="tablewrap"><table>
+    <thead><tr><th>Service</th><th class="num">Sites</th><th>Prevalence</th><th class="num">Share</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Meta Pixel<div class="muted">ad-pixel</div></td>
+        <td class="num">8 of 16</td>
+        <td class="barcell">
+          <div class="bartrack"><div class="barfill" style="width:50%"></div></div>
+        </td>
+        <td class="num">50%</td>
+      </tr>
+      <tr>
+        <td>Hotjar<div class="muted">session-replay</div></td>
+        <td class="num">6 of 16</td>
+        <td class="barcell">
+          <div class="bartrack"><div class="barfill" style="width:37.5%"></div></div>
+        </td>
+        <td class="num">38%</td>
+      </tr>
+      <tr>
+        <td>TikTok Pixel<div class="muted">ad-pixel</div></td>
+        <td class="num">4 of 16</td>
+        <td class="barcell">
+          <div class="bartrack"><div class="barfill" style="width:25%"></div></div>
+        </td>
+        <td class="num">25%</td>
+      </tr></tbody></table></div>
+
+<h3>By pass</h3>
+<div class="grid">
+  <section>
+    <h4>Before any interaction</h4>
+    <p class="muted">Observed on load, with nothing clicked.</p>
+    <ol class="compact"><li>Meta Pixel <span class="muted">50%</span></li><li>Hotjar <span class="muted">38%</span></li><li>TikTok Pixel <span class="muted">25%</span></li></ol>
+  </section>
+  <section>
+    <h4>With Global Privacy Control enabled</h4>
+    <p class="muted">Observed while the browser advertised <code>Sec-GPC: 1</code>.</p>
+    <ol class="compact"><li>Meta Pixel <span class="muted">50%</span></li><li>Hotjar <span class="muted">38%</span></li><li>TikTok Pixel <span class="muted">25%</span></li></ol>
+  </section>
+  <section>
+    <h4>After the reject control was clicked</h4>
+    <p class="muted">Observed only after the banner's own reject control was activated.</p>
+    <p class="muted">None observed.</p>
+  </section>
+</div>
+
+<h2>Method</h2>
+<ul>
+  <li><strong>Sample.</strong> 16 sites submitted;
+      16 produced a usable capture and are the denominator for
+      every figure above; 0 were excluded.</li>
+  <li><strong>Dates.</strong> Measurements were taken 2026-07-30. Each figure is a
+      snapshot of that window and nothing else — tag configurations change weekly.</li>
+  <li><strong>What was measured.</strong> One page per site, loaded three times with a clean browser
+      profile each time: once with no interaction; once with the Global Privacy Control signal
+      advertised as <code>Sec-GPC: 1</code> and <code>navigator.globalPrivacyControl = true</code>;
+      and once after activating the consent banner's own reject control, recording only requests
+      issued after that click.</li>
+  <li><strong>How services were identified.</strong> 28
+      curated service fingerprints, supplemented by a public dataset of
+      2142 categorised third-party entities
+      (third-party-web (MIT), HTTP Archive derived).</li>
+  <li><strong>Counting rule.</strong> Every share is a share of sites, counted once per site, never
+      a share of requests.</li>
+  <li><strong>Quartiles.</strong> Linear interpolation between order statistics — the definition
+      used by <code>PERCENTILE.INC</code> and by R's default quantile type — so that anyone
+      recomputing these numbers gets the same ones.</li>
+  <li><strong>Services that signalled consent denied are excluded from every count.</strong> A tag
+      firing while transmitting a consent-denied signal, as Google Consent Mode and Meta's Limited
+      Data Use are designed to do, is not counted as pre-consent transmission. This makes the
+      figures above lower than a naive request count would produce.</li>
+</ul>
+
+<h3>Why sites were excluded</h3>
+<p class="muted">Every site submitted produced a usable capture.</p>
+<p class="muted">Excluded sites are removed from the denominator rather than counted as clean. A
+capture that failed observes no trackers, which is indistinguishable from a site that transmits
+none, and folding those together would push every figure here downward.</p>
+
+<h2>What this method cannot see</h2>
+<p class="muted">Stated plainly, because the numbers above are more useful with their limits attached
+than without them. Each of these makes the reported shares an understatement rather than an
+overstatement.</p>
+<ul>
+  <li><strong>Server-side tagging.</strong> Tags routed through a company's own domain or through a
+      server-side container are indistinguishable from ordinary first-party traffic when observed
+      from outside. Data can be forwarded to third parties without appearing in any figure here.</li>
+  <li><strong>First-party proxied and CNAME-cloaked trackers.</strong> The same limitation: a
+      tracker served from a subdomain of the site is not counted as third-party.</li>
+  <li><strong>One page per site, one moment.</strong> Only a single page was tested on each site.
+      Behaviour commonly differs on checkout, account and search pages, which are the pages where
+      the data involved is most sensitive.</li>
+  <li><strong>One geography, one profile.</strong> Every load came from a single location with a
+      single browser profile. Sites frequently vary tag behaviour by region, by consent framework,
+      and by returning-visitor state.</li>
+  <li><strong>Reject controls behind a preferences dialog.</strong> Automated interaction finds
+      controls presented at banner level. A reject path that exists only inside a settings dialog is
+      recorded here as not found, which is a statement about automated reachability, not about
+      whether the control exists.</li>
+  <li><strong>A request is not proof of what it carried.</strong> Observing that a request was sent
+      is not evidence that personal data was shared. The figures describe network behaviour, which
+      is the only thing this method observes.</li>
+</ul>
+
+<h2>Why this was measured</h2>
+<p class="muted">Public enforcement activity in this area during 2026, included as context for why
+this behaviour is worth measuring. No company in this sample is connected to any of these matters,
+and no inference about any company should be drawn from them.</p>
+<ul><li><strong>Disney / ABC</strong> — $2.75M <span class="muted">(Feb 2026)</span></li><li><strong>PlayOn Sports</strong> — $1.1M <span class="muted">(Q1 2026)</span></li><li><strong>Honda</strong> — $632,500 <span class="muted">(2026 — asymmetric opt-out design)</span></li><li><strong>Ford</strong> — $375,703 <span class="muted">(Mar 2026)</span></li></ul>
+
+<div class="note">
+  <strong>Scope.</strong> This is an aggregate technical observation of network behaviour, produced
+  by automated testing from the public internet. It is not legal advice, and it states no conclusion
+  about the legal position or compliance status of any company, named or unnamed. Whether any
+  behaviour described here carries legal significance depends on facts that cannot be observed from
+  outside — data-sharing agreements, the categories of data involved, and the jurisdictions of the
+  visitors concerned. Those questions are for qualified counsel. No individual company is identified
+  in this document, and the rendering process refuses to produce this page if any company name,
+  hostname or URL from the underlying dataset would appear in it.
+</div>
+
+</div></body></html>
