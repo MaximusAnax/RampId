@@ -22,7 +22,7 @@ reproduces that examination in advance.
 ```bash
 cd scanner
 npm install
-npm test                      # 216 tests
+npm test                      # 267 tests
 
 # one command: target list → ranked queue, reports, and drafted first messages
 node cli.js campaign --sector="US retail" --sender="Your Name" \
@@ -92,6 +92,18 @@ Every one of these produced output that looked like good news:
 - **A site that correctly halts all tracking after reject records zero requests**, which the
   capture-health check read as a failed load. The best possible client outcome was being
   classified as a broken scan.
+- **A bot challenge or error page scored as a perfect clean scan.** It loads, records
+  requests, and contains no trackers — because there is no site there. In monitoring, a
+  client who started blocking us would have been told every finding was resolved.
+- **Consent detection ran before any real platform renders its banner**, so the lead finding
+  accused compliant sites. Static fixtures hid this completely; a fixture that renders on a
+  timer now fails without the fix.
+- **One failed monitoring cycle erased all drift across it**, permanently, reported as
+  "unchanged" — the failure became the baseline and the next cycle compared against it.
+- **A new tracker with no new finding ID was filed as "quiet"** — the most common real
+  regression, which would have hollowed out the retainer while appearing to work.
+- **The index published an n=1 aggregate.** Anonymity is statistical, not string-based: every
+  figure on that page described one identifiable company.
 
 ## Data and licensing
 
@@ -132,5 +144,8 @@ scanner/src/
   report.js        client-facing HTML evidence report
   indexreport.js   anonymised aggregate sector index
   assess.js        multi-regulation assessment over one crawl
+  optoutdisplay.js the section 7025(c)(6) display check — the lead finding
+  confidence.js    how much human review each finding actually needs
+  campaign.js      one command from target list to ranked queue
   scan.js          EU AI Act Article 50 chatbot capture
 ```
