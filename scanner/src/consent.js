@@ -1,5 +1,7 @@
 import { chromium } from 'playwright';
-import { classifyRequests, worstSeverity, SEVERITY_RANK } from './trackers.js';
+import { worstSeverity, SEVERITY_RANK } from './trackers.js';
+import { classifyAll } from './entities.js';
+import { detectConsentPlatform, clickReject } from './cmp.js';
 
 /**
  * Three-pass consent evidence capture.
@@ -24,18 +26,11 @@ import { classifyRequests, worstSeverity, SEVERITY_RANK } from './trackers.js';
  * company built the button itself.
  */
 
-const REJECT_PATTERNS = [
-  /^reject all$/i, /^reject$/i, /^decline all$/i, /^decline$/i,
-  /^refuse all$/i, /^deny all$/i, /^only necessary$/i,
-  /^necessary only$/i, /^essential only$/i, /^use necessary cookies only$/i,
-  /^continue without accepting/i, /^manage.*reject/i,
-];
-
 // Production default. Real sites inject tags lazily, so this must stay generous;
 // tests override it because fixtures fire synchronously.
 const PASS_SETTLE_MS = 7000;
 
-async function runPass(browser, url, { gpc = false, clickReject = false, settleMs = PASS_SETTLE_MS } = {}) {
+async function runPass(browser, url, { gpc = false, clickReject: doReject = false, settleMs = PASS_SETTLE_MS } = {}) {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
     locale: 'en-US',
@@ -56,20 +51,24 @@ async function runPass(browser, url, { gpc = false, clickReject = false, settleM
   context.on('request', (r) => requests.push(r.url()));
 
   const page = await context.newPage();
-  const pass = { requests: [], rejectClicked: false, error: null, timeline: [] };
+  const pass = { requests: [], rejectClicked: false, rejectMethod: null, consent: null, error: null };
   let cutFrom = 0;
 
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 40000 });
 
-    if (clickReject) {
+    pass.consent = await detectConsentPlatform(page, []);
+
+    if (doReject) {
       await page.waitForTimeout(Math.min(3500, settleMs));
       // Mark the cut point *before* clicking. Clearing the buffer afterwards races
       // against the banner's own click handler, which usually fires its pixels
       // synchronously — those are precisely the requests this pass exists to catch,
       // and discarding them turns the most damaging finding into a silent pass.
       cutFrom = requests.length;
-      pass.rejectClicked = await clickRejectControl(page);
+      const outcome = await clickReject(page);
+      pass.rejectClicked = outcome.clicked;
+      pass.rejectMethod = outcome.method;
       if (!pass.rejectClicked) cutFrom = 0;
     }
 
@@ -81,35 +80,6 @@ async function runPass(browser, url, { gpc = false, clickReject = false, settleM
   pass.requests = [...new Set(requests.slice(cutFrom))];
   await context.close().catch(() => {});
   return pass;
-}
-
-async function clickRejectControl(page) {
-  for (const re of REJECT_PATTERNS) {
-    for (const frame of page.frames()) {
-      try {
-        const btn = frame.getByRole('button', { name: re }).first();
-        if (await btn.isVisible({ timeout: 700 })) {
-          await btn.click({ timeout: 2500 });
-          return true;
-        }
-      } catch {
-        /* control not present in this frame */
-      }
-    }
-  }
-  // Some CMPs render the reject control as a link rather than a button.
-  for (const re of REJECT_PATTERNS) {
-    try {
-      const link = page.getByRole('link', { name: re }).first();
-      if (await link.isVisible({ timeout: 700 })) {
-        await link.click({ timeout: 2500 });
-        return true;
-      }
-    } catch {
-      /* not a link either */
-    }
-  }
-  return false;
 }
 
 export async function scanConsent(url, opts = {}) {
@@ -135,21 +105,42 @@ export async function scanConsent(url, opts = {}) {
     const gpc = await runPass(browser, url, { gpc: true, settleMs });
     const reject = await runPass(browser, url, { clickReject: true, settleMs });
 
-    const A = classifyRequests(baseline.requests);
-    const B = classifyRequests(gpc.requests);
-    const C = classifyRequests(reject.requests);
+    const pageHost = (() => {
+      try { return new URL(url).hostname; } catch { return null; }
+    })();
 
-    const findings = buildFindings({ A, B, C, reject });
+    const A = classifyAll(baseline.requests, { pageHost });
+    const B = classifyAll(gpc.requests, { pageHost });
+    const C = classifyAll(reject.requests, { pageHost });
+
+    // DOM detection is authoritative over network signatures: a self-hosted consent manager
+    // makes no third-party request, so network evidence alone reports "none" for a banner
+    // that is plainly on screen.
+    const consentPlatforms = [
+      ...new Set([
+        ...A.cmps.map((c) => c.name),
+        ...(baseline.consent?.platforms ?? []),
+        ...(reject.consent?.platforms ?? []),
+      ]),
+    ];
+    const bannerVisible = Boolean(baseline.consent?.bannerVisible || reject.consent?.bannerVisible);
+
+    const findings = buildFindings({ A, B, C, reject, consentPlatforms, bannerVisible });
 
     return {
       url,
       scannedAt: new Date().toISOString(),
       durationMs: Date.now() - started,
-      cmp: A.cmps.map((c) => c.name),
+      cmp: consentPlatforms,
+      bannerVisible,
       passes: {
         baseline: summarise(A, baseline),
         gpc: summarise(B, gpc),
-        afterReject: { ...summarise(C, reject), rejectClicked: reject.rejectClicked },
+        afterReject: {
+          ...summarise(C, reject),
+          rejectClicked: reject.rejectClicked,
+          rejectMethod: reject.rejectMethod,
+        },
       },
       findings,
       riskScore: score(findings),
@@ -173,9 +164,9 @@ const summarise = (cls, pass) => ({
   error: pass.error,
 });
 
-function buildFindings({ A, B, C, reject }) {
+function buildFindings({ A, B, C, reject, consentPlatforms, bannerVisible }) {
   const findings = [];
-  const hasCmp = A.cmps.length > 0;
+  const hasCmp = consentPlatforms.length > 0;
 
   if (A.trackers.length) {
     findings.push({
@@ -183,7 +174,7 @@ function buildFindings({ A, B, C, reject }) {
       severity: worstSeverity(A.trackers),
       title: `${A.trackers.length} third-party tracker(s) fired before any consent interaction`,
       detail: hasCmp
-        ? `A consent platform (${A.cmps.map((c) => c.name).join(', ')}) is deployed, yet these ` +
+        ? `A consent platform (${consentPlatforms.join(', ')}) is deployed, yet these ` +
           'trackers transmitted before the visitor made any choice.'
         : 'No consent management platform was detected on the page.',
       trackers: A.trackers.map((t) => t.name),
@@ -216,25 +207,32 @@ function buildFindings({ A, B, C, reject }) {
     });
   }
 
-  if (!hasCmp && A.trackers.length) {
+  // Gate on bannerVisible, not just on recognising a named platform. A bespoke or
+  // self-hosted banner is a real consent mechanism even when no signature matches it, and
+  // claiming otherwise is a factual error the reader can disprove instantly.
+  if (!hasCmp && !bannerVisible && A.trackers.length) {
     findings.push({
       id: 'NO_CMP',
       severity: 'high',
-      title: 'No consent management platform detected',
-      detail: 'Trackers are present with no mechanism for a visitor to refuse them.',
+      title: 'No consent mechanism detected',
+      detail:
+        'Third-party trackers were observed and no consent banner or platform could be ' +
+        'identified on the tested page.',
       trackers: [],
     });
   }
 
-  if (!reject.rejectClicked && hasCmp) {
+  if (!reject.rejectClicked && (hasCmp || bannerVisible)) {
     findings.push({
       id: 'NO_REJECT_CONTROL',
       severity: 'high',
       title: 'No reject control found on the consent banner',
       detail:
-        'A consent platform is present but no reject/decline control could be found at the ' +
-        'same level as accept. Asymmetric consent design has drawn direct enforcement — ' +
-        'the CPPA fined Honda $632,500 in a matter involving asymmetric opt-out flows.',
+        'A consent banner is present but no reject or decline control could be found at the ' +
+        'same level as accept. Automated interaction may miss a control that is only reachable ' +
+        'through a preferences dialog, so this warrants a manual check before it is relied on. ' +
+        'Asymmetric consent design has drawn direct enforcement — the CPPA fined Honda ' +
+        '$632,500 in a matter involving asymmetric opt-out flows.',
       trackers: [],
     });
   }

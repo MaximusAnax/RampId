@@ -36,6 +36,27 @@ export const TRACKERS = [
   { id: 'logrocket', name: 'LogRocket', category: 'session-replay', severity: 'critical',
     hosts: ['logrocket.com', 'lr-ingest.io'],
     evidence: 'Records session replay including network and console activity.' },
+  // The broad dataset files these under generic "analytics", which understates them badly.
+  // Session replay is implicated in roughly 65% of CIPA filings, so it is curated here to
+  // carry the severity and the specific description the finding actually needs.
+  { id: 'mouseflow', name: 'Mouseflow', category: 'session-replay', severity: 'critical',
+    hosts: ['mouseflow.com'],
+    evidence: 'Records session replays, heatmaps and form interaction.' },
+  { id: 'smartlook', name: 'Smartlook', category: 'session-replay', severity: 'critical',
+    hosts: ['smartlook.com', 'smartlook.cloud'],
+    evidence: 'Records session replays including form and click interaction.' },
+  { id: 'inspectlet', name: 'Inspectlet', category: 'session-replay', severity: 'critical',
+    hosts: ['inspectlet.com'],
+    evidence: 'Records session replays and keystroke-level interaction.' },
+  { id: 'luckyorange', name: 'Lucky Orange', category: 'session-replay', severity: 'critical',
+    hosts: ['luckyorange.com', 'luckyorange.net'],
+    evidence: 'Records session replays, heatmaps and form analytics.' },
+  { id: 'sessioncam', name: 'SessionCam', category: 'session-replay', severity: 'critical',
+    hosts: ['sessioncam.com'],
+    evidence: 'Records session replay of visitor interaction.' },
+  { id: 'decibel', name: 'Decibel / Medallia DXA', category: 'session-replay', severity: 'critical',
+    hosts: ['decibelinsight.net', 'decibelinsight.com'],
+    evidence: 'Records session replay and digital experience telemetry.' },
 
   // Advertising pixels - identifier transmission to an ad network
   { id: 'meta', name: 'Meta Pixel', category: 'ad-pixel', severity: 'critical',
