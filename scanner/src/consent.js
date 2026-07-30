@@ -71,7 +71,17 @@ async function runPass(browser, url, { gpc = false, clickReject: doReject = fals
   let cutFrom = 0;
 
   try {
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 40000 });
+    const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 40000 });
+
+    // What the server actually returned, and whether what came back is a real page.
+    //
+    // Without this a Cloudflare or Akamai challenge, a 403, or a 500 error page all scan
+    // as perfectly healthy and perfectly clean: the navigation succeeded, requests were
+    // recorded, and no trackers fired — because there was no site there. In monitoring it
+    // is worse than useless, because a client who starts challenging our traffic would be
+    // told every one of their findings had been resolved.
+    pass.status = response?.status() ?? null;
+    pass.challenge = await detectChallengePage(page, pass.status);
 
     // Let the page finish becoming itself before inspecting it.
     //
@@ -201,18 +211,24 @@ export async function scanConsent(url, opts = {}) {
     // also registers exactly one. Thresholding on the count therefore marked clean sites as
     // failed scans — which in monitoring would have meant the best-behaved clients were
     // silently skipped forever.
-    const passLoaded = (p) => !p.error && (p.observedRequestCount ?? 0) >= 1;
+    const passLoaded = (p) =>
+      !p.error && !p.challenge?.blocked && (p.observedRequestCount ?? 0) >= 1;
     const loadedPasses = [baseline, gpc, reject].filter(passLoaded).length;
+    const blocked = [baseline, gpc, reject].find((p) => p.challenge?.blocked);
     const capture = {
       ok: loadedPasses === 3,
       passesLoaded: loadedPasses,
       usable: loadedPasses > 0,
+      blocked: Boolean(blocked),
       note:
         loadedPasses === 3
           ? null
-          : loadedPasses === 0
-            ? 'The page could not be loaded. No conclusion can be drawn from this scan.'
-            : `Only ${loadedPasses} of 3 passes loaded successfully. Findings are incomplete.`,
+          : blocked
+            ? `${blocked.challenge.reason} No conclusion can be drawn about this site's ` +
+              'tracking behaviour from this scan.'
+            : loadedPasses === 0
+              ? 'The page could not be loaded. No conclusion can be drawn from this scan.'
+              : `Only ${loadedPasses} of 3 passes loaded successfully. Findings are incomplete.`,
     };
 
     return {
@@ -247,6 +263,41 @@ export async function scanConsent(url, opts = {}) {
   }
 }
 
+/** Signatures of an interstitial served instead of the site. */
+const CHALLENGE_MARKERS = [
+  /just a moment/i,
+  /checking your browser/i,
+  /enable javascript and cookies to continue/i,
+  /verify you are (?:a )?human/i,
+  /attention required/i,
+  /access denied/i,
+  /request blocked/i,
+  /are you a robot/i,
+  /ddos protection/i,
+  /pardon our interruption/i,
+  /unusual traffic/i,
+];
+
+async function detectChallengePage(page, status) {
+  if (status !== null && status >= 400) {
+    return { blocked: true, reason: `Server responded ${status}.` };
+  }
+  try {
+    const [title, text] = await Promise.all([
+      page.title().catch(() => ''),
+      page.evaluate(() => document.body?.innerText?.slice(0, 2000) ?? ''),
+    ]);
+    const haystack = `${title}\n${text}`;
+    const marker = CHALLENGE_MARKERS.find((re) => re.test(haystack));
+    if (marker) {
+      return { blocked: true, reason: 'An interstitial or challenge page was served instead of the site.' };
+    }
+  } catch {
+    // Unreadable page; the capture-health check covers this case.
+  }
+  return { blocked: false, reason: null };
+}
+
 const trackerView = (t) => ({
   name: t.name,
   category: t.category,
@@ -258,6 +309,12 @@ const trackerView = (t) => ({
 
 const summarise = (cls, pass) => ({
   observedRequestCount: pass.observedRequestCount ?? pass.requests.length,
+  // Carried through so the report can never print "no third-party trackers observed" in
+  // green for a pass that failed. An empty pass and a clean pass look identical and mean
+  // opposite things.
+  loaded: !pass.error && !pass.challenge?.blocked,
+  status: pass.status ?? null,
+  blocked: Boolean(pass.challenge?.blocked),
   trackerCount: cls.reportable.length,
   trackers: cls.reportable.map(trackerView),
   // Services that fired but signalled that consent was denied. Kept visible as context so

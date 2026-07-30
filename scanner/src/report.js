@@ -115,7 +115,15 @@ function passBlock(title, pass, explanation) {
       pass.trackers.length
         ? `<div class="tablewrap"><table><thead><tr><th>Service</th><th>What it does</th><th>Endpoint</th></tr></thead>
            <tbody>${rows}</tbody></table></div>`
-        : '<p class="ok">No third-party trackers observed in this pass without a consent signal.</p>'
+        : pass.loaded === false
+          ? // Never print a green "clean" line for a pass that never loaded. An empty pass
+            // and a clean pass look identical and mean opposite things, and the green is
+            // read as a result rather than as an absence of one.
+            `<p class="muted">This pass did not complete${
+              pass.blocked ? ' — an interstitial or error page was served instead of the site' : ''
+            }${pass.status && pass.status >= 400 ? ` (HTTP ${esc(String(pass.status))})` : ''}.
+             Nothing can be concluded from it.</p>`
+          : '<p class="ok">No third-party trackers observed in this pass without a consent signal.</p>'
     }
     ${
       restrained

@@ -134,7 +134,15 @@ export function triage(results) {
     // explicitly rather than relying on > 0 silently coercing null to a falsy zero.
     const delta = typeof r.diff.riskDelta === 'number' ? r.diff.riskDelta : 0;
 
-    if (delta > 0 || r.diff.newFindings?.length) {
+    // New trackers must count as a regression even when no new finding ID appears.
+    //
+    // The common real case is a marketing team adding one more tag to a site that already
+    // has a PRE_CONSENT finding: the finding set is unchanged, the risk score is unchanged,
+    // and the drift that the client pays to hear about would otherwise be filed as "quiet".
+    // That single gap would hollow out the retainer while appearing to work.
+    const newTrackers = r.diff.newTrackers?.length ?? 0;
+
+    if (delta > 0 || r.diff.newFindings?.length || newTrackers > 0) {
       regressions.push({ url: r.url, alert: r.alert, riskDelta: delta });
     } else if (delta < 0 || r.diff.resolvedFindings?.length) {
       improvements.push({ url: r.url, alert: r.alert, riskDelta: delta });
