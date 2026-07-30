@@ -26,6 +26,21 @@ import { detectConsentPlatform, clickReject } from './cmp.js';
  * company built the button itself.
  */
 
+/**
+ * Remove proxy configuration from an environment copy.
+ *
+ * A scan routed through an intercepting proxy silently reports a clean site, because
+ * sub-resources fail to load and every tracker therefore looks absent. That is the worst
+ * failure this system can produce: it is invisible, and the output looks like good news.
+ */
+function stripProxyEnv(env) {
+  const cleaned = { ...env };
+  for (const key of Object.keys(cleaned)) {
+    if (/^(https?_proxy|all_proxy|no_proxy)$/i.test(key)) delete cleaned[key];
+  }
+  return cleaned;
+}
+
 // Production default. Real sites inject tags lazily, so this must stay generous;
 // tests override it because fixtures fire synchronously.
 const PASS_SETTLE_MS = 7000;
@@ -100,10 +115,24 @@ export async function scanConsent(url, opts = {}) {
   const proxyServer = process.env.A50_PROXY || null;
   const browser = await chromium.launch({
     headless: opts.headless !== false,
-    ...(proxyServer
-      ? { proxy: { server: proxyServer, bypass: '127.0.0.1,localhost' } }
-      : {}),
-    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+    // When no proxy is configured, force a direct connection explicitly. Chromium
+    // otherwise inherits HTTPS_PROXY from the environment, and an intercepting proxy stops
+    // sub-resources loading — so every tracker looks absent and the scan reports a clean
+    // site. That is a silent false negative, the worst failure this system can produce,
+    // and it is invisible precisely because the output looks like good news.
+    ...(proxyServer ? { proxy: { server: proxyServer, bypass: '127.0.0.1,localhost' } } : {}),
+    // Chromium reads proxy configuration from the environment it inherits, so the flag
+    // alone is not enough — the variables have to be stripped from the child's env too.
+    env: proxyServer ? process.env : stripProxyEnv(process.env),
+    args: [
+      '--no-sandbox',
+      '--disable-dev-shm-usage',
+      // Without this Chromium inherits HTTPS_PROXY from the environment even when no proxy
+      // was requested. An intercepting proxy stops sub-resources loading, so every tracker
+      // looks absent and the scan reports a clean site — a silent false negative, and the
+      // worst failure this system can produce precisely because it looks like good news.
+      ...(proxyServer ? [] : ['--no-proxy-server']),
+    ],
   });
 
   const started = Date.now();

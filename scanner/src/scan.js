@@ -2,6 +2,21 @@ import { chromium } from 'playwright';
 import { identifyVendors, aiLikelihood } from './vendors.js';
 import { assessDisclosure, VERDICT } from './disclosure.js';
 
+/**
+ * Remove proxy configuration from an environment copy.
+ *
+ * A scan routed through an intercepting proxy silently reports a clean site, because
+ * sub-resources fail to load and every tracker therefore looks absent. That is the worst
+ * failure this system can produce: it is invisible, and the output looks like good news.
+ */
+function stripProxyEnv(env) {
+  const cleaned = { ...env };
+  for (const key of Object.keys(cleaned)) {
+    if (/^(https?_proxy|all_proxy|no_proxy)$/i.test(key)) delete cleaned[key];
+  }
+  return cleaned;
+}
+
 const AI_ORDER = ['human', 'hybrid', 'usually', 'always'];
 
 /** Selectors and accessible-name patterns that open a chat widget. */
@@ -56,10 +71,24 @@ export async function scanSite(url, opts = {}) {
 
   const browser = await chromium.launch({
     headless,
-    ...(proxyServer
-      ? { proxy: { server: proxyServer, bypass: '127.0.0.1,localhost' } }
-      : {}),
-    args: ['--no-sandbox', '--disable-dev-shm-usage'],
+    // When no proxy is configured, force a direct connection explicitly. Chromium
+    // otherwise inherits HTTPS_PROXY from the environment, and an intercepting proxy stops
+    // sub-resources loading — so every tracker looks absent and the scan reports a clean
+    // site. That is a silent false negative, the worst failure this system can produce,
+    // and it is invisible precisely because the output looks like good news.
+    ...(proxyServer ? { proxy: { server: proxyServer, bypass: '127.0.0.1,localhost' } } : {}),
+    // Chromium reads proxy configuration from the environment it inherits, so the flag
+    // alone is not enough — the variables have to be stripped from the child's env too.
+    env: proxyServer ? process.env : stripProxyEnv(process.env),
+    args: [
+      '--no-sandbox',
+      '--disable-dev-shm-usage',
+      // Without this Chromium inherits HTTPS_PROXY from the environment even when no proxy
+      // was requested. An intercepting proxy stops sub-resources loading, so every tracker
+      // looks absent and the scan reports a clean site — a silent false negative, and the
+      // worst failure this system can produce precisely because it looks like good news.
+      ...(proxyServer ? [] : ['--no-proxy-server']),
+    ],
   });
   const context = await browser.newContext({
     userAgent,

@@ -411,6 +411,123 @@ test('a post-reject pass measured on a different basis is recorded but not chara
   assert.match(body, /not measured on the same basis/);
 });
 
+test('a page load with no reject control is never narrated as post-reject behaviour', () => {
+  // consent.js only slices the request buffer from the moment the reject control is clicked.
+  // With no reject control to click it keeps the whole page load, so the third pass is a
+  // second plain load wearing the post-reject name. Narrating it as "after a visitor clicks
+  // reject" asserts a click that never happened, on precisely the sites least likely to
+  // offer a reject button, and hands the change the rank reserved for surviving a real one.
+  const previous = makeScan({
+    scannedAt: JUNE,
+    baseline: [TRACKER.ga],
+    gpc: [TRACKER.ga],
+    afterReject: [TRACKER.ga],
+    rejectClicked: false,
+  });
+  // Meta Pixel is absent from the GPC pass, so the post-reject pass is the only one that
+  // could push the change above baseline gravity. It must not.
+  const current = makeScan({
+    scannedAt: JULY,
+    baseline: [TRACKER.ga, TRACKER.meta],
+    gpc: [TRACKER.ga],
+    afterReject: [TRACKER.ga, TRACKER.meta],
+    rejectClicked: false,
+    findings: [FINDING.preConsent(['Google Analytics', 'Meta Pixel'])],
+    riskScore: 30,
+  });
+
+  const diff = diffScans(previous, current);
+  assert.equal(diff.perPass.afterReject.measuredPostReject, false);
+  assert.equal(diff.perPass.afterReject.rejectClicked.changed, false);
+
+  const { subject, body } = summarizeDrift(diff);
+  assert.doesNotMatch(subject, /reject/i, `subject claimed a reject click: ${subject}`);
+  assert.doesNotMatch(
+    body,
+    /after (a visitor clicks reject|the reject control was clicked)/i,
+    `body claimed a reject click that never happened: ${body}`
+  );
+  assert.match(subject, /Meta Pixel now fires on page load/);
+  assert.match(diff.notes.join(' '), /recorded the whole page load both times/);
+
+  // 33 is a critical tracker newly surviving the site's own reject button. A site with no
+  // reject button cannot reach it.
+  assert.ok(
+    Math.max(...diff.changes.map((c) => c.rank)) < 33,
+    'an unclicked third pass must not reach the ceiling reserved for a real reject click'
+  );
+  assert.equal(diff.newTrackers[0].worstPass, 'baseline');
+});
+
+test('scans supplied in the wrong chronological order are refused, not described backwards', () => {
+  const june = makeScan({ scannedAt: JUNE, baseline: [TRACKER.ga] });
+  const july = makeScan({
+    scannedAt: JULY,
+    baseline: [TRACKER.ga, TRACKER.meta],
+    findings: [FINDING.preConsent(['Google Analytics', 'Meta Pixel'])],
+    riskScore: 30,
+  });
+
+  assert.equal(diffScans(june, july).materiality, MATERIALITY.REGRESSION);
+
+  // The same pair the wrong way round narrates that regression as a fix, and dates it
+  // "since the last check on" a day that has not happened yet. Every classification here is
+  // directional, so the reversed reading is confident and wrong rather than obviously wrong.
+  const reversed = diffScans(july, june);
+  assert.equal(reversed.status, DRIFT_STATUS.NOT_COMPARABLE);
+  assert.equal(reversed.riskDelta, null);
+  assert.deepEqual(reversed.removedTrackers, []);
+  assert.match(reversed.captureProblems.join(' '), /wrong order/);
+  assert.doesNotMatch(summarizeDrift(reversed).body, /no longer|reduced/i);
+
+  // Two scans bearing the same timestamp are a legitimate no-op, not an ordering error.
+  assert.equal(
+    diffScans(june, makeScan({ scannedAt: JUNE, baseline: [TRACKER.ga] })).status,
+    DRIFT_STATUS.COMPARED
+  );
+});
+
+test('a finding whose severity fell while it gained services is not called an improvement', () => {
+  // A finding's severity is the worst severity among its services, so it drops the moment
+  // the single gravest one leaves — which can happen in the very check that two new ones
+  // arrive. Reading only the severity reports that as a fix.
+  const previous = makeScan({
+    scannedAt: JUNE,
+    baseline: [TRACKER.hotjar],
+    findings: [{ ...FINDING.preConsent(['Hotjar']), severity: 'critical' }],
+    riskScore: 30,
+  });
+  const current = makeScan({
+    scannedAt: JULY,
+    baseline: [TRACKER.ga, TRACKER.meta],
+    findings: [
+      { ...FINDING.preConsent(['Google Analytics', 'Meta Pixel']), severity: 'medium' },
+    ],
+    riskScore: 5,
+  });
+
+  const diff = diffScans(previous, current);
+  const finding = diff.persistingFindings[0];
+
+  assert.equal(finding.id, 'PRE_CONSENT');
+  assert.deepEqual(finding.trackersAdded, ['Google Analytics', 'Meta Pixel']);
+  assert.equal(finding.severityChanged, true);
+  assert.notEqual(
+    finding.materiality,
+    MATERIALITY.IMPROVEMENT,
+    'a finding that gained services has not improved, whatever its severity did'
+  );
+  assert.equal(diff.materiality, MATERIALITY.REGRESSION, 'two new pre-consent trackers lead');
+
+  const { body } = summarizeDrift(diff);
+  const improvementParagraph = body.split('\n\n').find((p) => /no longer/.test(p)) ?? '';
+  assert.doesNotMatch(
+    improvementParagraph,
+    /severity recorded/,
+    'a severity drop bought with new services must not sit in the improvements paragraph'
+  );
+});
+
 test('losing the consent platform is a regression and swapping vendors is neither', () => {
   const base = { baseline: [TRACKER.ga], gpc: [TRACKER.ga] };
 
@@ -429,6 +546,16 @@ test('losing the consent platform is a regression and swapping vendors is neithe
   assert.equal(migrated.cmpChanged, true);
   assert.equal(migrated.materiality, MATERIALITY.NEUTRAL, 'a migration is not an accusation');
   assert.match(summarizeDrift(migrated).body, /changed from OneTrust to Cookiebot/);
+
+  // Gaining a platform is an improvement, but nothing stopped firing, so the subject line
+  // must not announce a reduction in tracking that did not occur.
+  const gained = diffScans(
+    makeScan({ ...base, scannedAt: JUNE, cmp: [] }),
+    makeScan({ ...base, scannedAt: JULY, cmp: ['Cookiebot'] })
+  );
+  assert.equal(gained.materiality, MATERIALITY.IMPROVEMENT);
+  assert.deepEqual(gained.removedTrackers, []);
+  assert.doesNotMatch(summarizeDrift(gained).subject, /Tracking reduced|fewer observations/);
 });
 
 test('scans of different hosts are refused rather than compared', () => {
@@ -438,6 +565,12 @@ test('scans of different hosts are refused rather than compared', () => {
   );
   assert.equal(diff.status, DRIFT_STATUS.NOT_COMPARABLE);
   assert.match(diff.captureProblems.join(' '), /different hosts/);
+
+  // Both scans completed. Telling a client their scan failed is a false statement about
+  // their site's availability, and one they are likely to act on.
+  const { body } = summarizeDrift(diff);
+  assert.doesNotMatch(body, /did not complete cleanly/);
+  assert.match(body, /completed, but it could not be set against the previous check/);
 });
 
 test('no narrative ever states a legal conclusion or sells AI', () => {
@@ -463,6 +596,17 @@ test('no narrative ever states a legal conclusion or sells AI', () => {
     diffScans(null, scans[1]),
     diffScans(scans[0], makeScan({ scannedAt: JULY, passOverrides: { gpc: { requestCount: 0 } } })),
     diffScans(scans[0], scans[0]),
+    diffScans(
+      makeScan({ scannedAt: JUNE, baseline: [TRACKER.ga], rejectClicked: false, cmp: [] }),
+      makeScan({
+        scannedAt: JULY,
+        baseline: [TRACKER.ga, TRACKER.meta],
+        afterReject: [TRACKER.ga, TRACKER.meta],
+        rejectClicked: false,
+        cmp: [],
+        riskScore: 30,
+      })
+    ),
   ];
 
   const banned = /violat|illegal|unlawful|breach|non-?compliant|liable|liability|must fix|ai-powered/i;
@@ -474,8 +618,36 @@ test('no narrative ever states a legal conclusion or sells AI', () => {
   }
 });
 
-test('a malformed diff still narrates without throwing', () => {
-  const { subject, body } = summarizeDrift(null);
-  assert.ok(subject.length);
-  assert.ok(body.length);
+test('a partially shaped diff still narrates without throwing', () => {
+  // diffScans fills every field in every branch, but this is also the function that turns a
+  // stored diff into an email, and stored diffs are re-read by later versions of this
+  // module. A field this version has not heard of has to cost a thinner sentence, never an
+  // alert that throws on the way out and is silently never sent.
+  const malformed = [
+    null,
+    undefined,
+    'not a diff',
+    42,
+    {},
+    [],
+    { status: 'compared' },
+    { status: 'compared', hasChanges: true },
+    { status: 'first-scan' },
+    { status: 'not-comparable' },
+    { status: 'not-comparable', captureProblems: null, blockedBy: 'pairing' },
+    {
+      status: 'compared',
+      hasChanges: true,
+      changes: null,
+      perPass: { baseline: {} },
+      cmp: null,
+      riskScore: null,
+    },
+  ];
+
+  for (const diff of malformed) {
+    const { subject, body } = summarizeDrift(diff);
+    assert.ok(subject.length, `no subject produced for ${JSON.stringify(diff)}`);
+    assert.ok(body.length, `no body produced for ${JSON.stringify(diff)}`);
+  }
 });

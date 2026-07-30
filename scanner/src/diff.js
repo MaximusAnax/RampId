@@ -83,6 +83,15 @@ const MATERIALITY_ORDER = {
   [MATERIALITY.NEUTRAL]: 2,
 };
 
+/**
+ * Read a field that should be a list as a list.
+ *
+ * Scans arrive from disk as often as from a live capture, and a truncated or hand-edited
+ * history file must degrade to "not comparable" rather than throw. A throw in the middle of
+ * a monitoring run is a target that silently stops being watched.
+ */
+const asArray = (value) => (Array.isArray(value) ? value : []);
+
 const hostOf = (url) => {
   try {
     return new URL(url).hostname;
@@ -132,7 +141,7 @@ export function findCaptureProblems(scan, label = 'scan') {
     }
   }
 
-  for (const error of scan.errors || []) {
+  for (const error of asArray(scan.errors)) {
     if (!problems.some((problem) => problem.includes(error))) {
       problems.push(`The ${label} reported an error: ${error}`);
     }
@@ -142,7 +151,7 @@ export function findCaptureProblems(scan, label = 'scan') {
 }
 
 const indexByName = (trackers) =>
-  new Map((trackers || []).map((tracker) => [tracker.name, tracker]));
+  new Map(asArray(trackers).map((tracker) => [tracker.name, tracker]));
 
 const emptyPassDiff = (passKey) => ({
   pass: passKey,
@@ -208,13 +217,13 @@ function snapshotOf(scan) {
   const names = new Set();
   const trackerCounts = {};
   for (const key of PASS_KEYS) {
-    const trackers = scan.passes[key]?.trackers || [];
+    const trackers = asArray(scan.passes[key]?.trackers);
     trackerCounts[key] = trackers.length;
     for (const tracker of trackers) names.add(tracker.name);
   }
   return {
     riskScore: scan.riskScore ?? null,
-    cmp: [...(scan.cmp || [])],
+    cmp: [...asArray(scan.cmp)],
     findingIds: (scan.findings || []).map((finding) => finding.id),
     trackerCounts,
     trackerNames: [...names],
@@ -294,7 +303,7 @@ function notComparable(previous, current, problems, blockedBy = 'capture') {
 
 function firstScan(current) {
   const diff = emptyDiff(null, current, DRIFT_STATUS.FIRST_SCAN);
-  diff.cmp = { previous: [], current: [...(current.cmp || [])], added: [], removed: [] };
+  diff.cmp = { previous: [], current: [...asArray(current.cmp)], added: [], removed: [] };
   diff.snapshot = snapshotOf(current);
   // Deliberately not populating newTrackers: on a first scan nothing has appeared, it has
   // merely been seen for the first time. Reporting it as new would make the opening alert
@@ -324,10 +333,10 @@ function compare(previous, current) {
   }
 
   diff.changes.push(...trackerChanges(diff.perPass));
-  Object.assign(diff, findingDiff(previous.findings || [], current.findings || []));
+  Object.assign(diff, findingDiff(asArray(previous.findings), asArray(current.findings)));
   diff.changes.push(...findingChanges(diff));
 
-  const cmpResult = cmpDiff(previous.cmp || [], current.cmp || []);
+  const cmpResult = cmpDiff(asArray(previous.cmp), asArray(current.cmp));
   diff.cmp = cmpResult.cmp;
   diff.cmpChanged = cmpResult.changed;
   if (cmpResult.change) diff.changes.push(cmpResult.change);
@@ -516,21 +525,31 @@ function findingDiff(previousFindings, currentFindings) {
       const severityChanged = was.severity !== finding.severity;
       const severityWorse =
         (SEVERITY_RANK[finding.severity] ?? 1) > (SEVERITY_RANK[was.severity] ?? 1);
-      const trackersAdded = (finding.trackers || []).filter(
-        (name) => !(was.trackers || []).includes(name)
+      const trackersAdded = asArray(finding.trackers).filter(
+        (name) => !asArray(was.trackers).includes(name)
       );
-      const trackersRemoved = (was.trackers || []).filter(
-        (name) => !(finding.trackers || []).includes(name)
+      const trackersRemoved = asArray(was.trackers).filter(
+        (name) => !asArray(finding.trackers).includes(name)
       );
 
       // A finding that gained trackers and lost others resolves to regression: the worse
       // half of a mixed change is the half the client has to act on.
-      const materiality = severityChanged
-        ? severityWorse
-          ? MATERIALITY.REGRESSION
-          : MATERIALITY.IMPROVEMENT
-        : trackersAdded.length
-          ? MATERIALITY.REGRESSION
+      //
+      // A finding that gained services can never be labelled an improvement, whatever the
+      // severity did. Severity here is the worst severity among the finding's services, so
+      // it drops the moment the single gravest one leaves — which can happen in the same
+      // check that three new services arrive. Reading only the severity would report that
+      // as a fix. Where the two halves genuinely disagree the label is neutral, because
+      // neither "better" nor "worse" is a defensible one-word answer and the per-tracker
+      // changes carry the detail either way.
+      const materiality = trackersAdded.length
+        ? severityChanged && !severityWorse
+          ? MATERIALITY.NEUTRAL
+          : MATERIALITY.REGRESSION
+        : severityChanged
+          ? severityWorse
+            ? MATERIALITY.REGRESSION
+            : MATERIALITY.IMPROVEMENT
           : trackersRemoved.length
             ? MATERIALITY.IMPROVEMENT
             : MATERIALITY.NEUTRAL;
@@ -653,13 +672,13 @@ function scanWideTrackerSets(previous, current, perPass) {
   const before = new Map();
   const after = new Map();
   for (const key of PASS_KEYS) {
-    for (const tracker of previous.passes[key]?.trackers || []) before.set(tracker.name, tracker);
-    for (const tracker of current.passes[key]?.trackers || []) after.set(tracker.name, tracker);
+    for (const tracker of asArray(previous.passes[key]?.trackers)) before.set(tracker.name, tracker);
+    for (const tracker of asArray(current.passes[key]?.trackers)) after.set(tracker.name, tracker);
   }
 
   const passesContaining = (name, side) =>
     PASS_KEYS.filter((key) =>
-      (side.passes[key]?.trackers || []).some((tracker) => tracker.name === name)
+      asArray(side.passes[key]?.trackers).some((tracker) => tracker.name === name)
     );
 
   const describe = (tracker, side, materiality) => {
@@ -804,19 +823,44 @@ function formatCheckDate(iso, referenceIso) {
   }).format(when);
 }
 
+function withNarrativeDefaults(diff) {
+  return {
+    ...diff,
+    riskScore: { previous: null, current: null, ...(diff.riskScore || {}) },
+    cmp: { previous: [], current: [], added: [], removed: [], ...(diff.cmp || {}) },
+    changes: asArray(diff.changes),
+    newFindings: asArray(diff.newFindings),
+    resolvedFindings: asArray(diff.resolvedFindings),
+    persistingFindings: asArray(diff.persistingFindings),
+    notes: asArray(diff.notes),
+    captureProblems: asArray(diff.captureProblems),
+    perPass: {
+      baseline: emptyPassDiff('baseline'),
+      gpc: emptyPassDiff('gpc'),
+      afterReject: emptyPassDiff('afterReject'),
+      ...(diff.perPass || {}),
+    },
+  };
+}
+
 /**
  * Narrate a diff for an alert email.
  *
  * @returns {{subject: string, body: string}}
  */
-export function summarizeDrift(diff) {
-  if (!diff || typeof diff !== 'object') {
+export function summarizeDrift(input) {
+  if (!input || typeof input !== 'object') {
     return {
       subject: 'No comparison available',
       body: 'No diff was supplied, so there is nothing to report.',
     };
   }
 
+  // diffScans always returns every field, but this function is also the thing that turns a
+  // diff into an email, and diffs get stored, re-read and re-narrated long after the shape
+  // they were written in. Filling the gaps here means a field this version has not heard of
+  // costs an incomplete sentence rather than an alert that never sends.
+  const diff = withNarrativeDefaults(input);
   const host = hostOf(diff.url);
 
   if (diff.status === DRIFT_STATUS.FIRST_SCAN) return firstScanNarrative(diff, host);
@@ -860,13 +904,22 @@ export function summarizeDrift(diff) {
     );
   }
 
+  // A severity that fell while the finding gained services is classified neutral upstream,
+  // and it has to stay out of the improvements paragraph here too. Filed under improvements
+  // it would read as a fix, which is the one direction this engine must never get wrong.
+  const mixedSentences = [];
   for (const finding of diff.persistingFindings) {
     if (!finding.severityChanged) continue;
     const sentence =
       `The severity recorded for an existing observation (${finding.id}) moved from ` +
-      `${finding.previousSeverity} to ${finding.severity}.`;
+      `${finding.previousSeverity} to ${finding.severity}` +
+      (finding.materiality === MATERIALITY.NEUTRAL
+        ? `, while the services listed under it changed to include ` +
+          `${nameList(finding.trackersAdded || [])}.`
+        : '.');
     if (finding.materiality === MATERIALITY.REGRESSION) regressionSentences.push(sentence);
-    else improvementSentences.push(sentence);
+    else if (finding.materiality === MATERIALITY.IMPROVEMENT) improvementSentences.push(sentence);
+    else mixedSentences.push(sentence);
   }
 
   const cmpSentence = consentPlatformChangeSentence(diff);
@@ -891,18 +944,20 @@ export function summarizeDrift(diff) {
     else improvementSentences.push(rejectChange.description);
   }
 
-  const neutralSentences = PASS_KEYS.filter(
-    (key) =>
-      !diff.perPass[key].comparable &&
-      (diff.perPass[key].added.length || diff.perPass[key].removed.length)
-  ).map((key) => {
-    const names = [...diff.perPass[key].added, ...diff.perPass[key].removed].map((t) => t.name);
-    return (
-      `${nameList(names)} ${names.length === 1 ? 'differs' : 'differ'} in the ` +
-      `${PASS_LABEL[key]} pass between the two checks, but that pass was not measured on ` +
-      'the same basis both times, so the difference is recorded rather than characterised.'
-    );
-  });
+  const neutralSentences = mixedSentences.concat(
+    PASS_KEYS.filter((key) => {
+      const pass = diff.perPass[key] || {};
+      return !pass.comparable && (asArray(pass.added).length || asArray(pass.removed).length);
+    }).map((key) => {
+      const pass = diff.perPass[key];
+      const names = [...asArray(pass.added), ...asArray(pass.removed)].map((t) => t.name);
+      return (
+        `${nameList(names)} ${names.length === 1 ? 'differs' : 'differ'} in the ` +
+        `${PASS_LABEL[key]} pass between the two checks, but that pass was not measured on ` +
+        'the same basis both times, so the difference is recorded rather than characterised.'
+      );
+    })
+  );
 
   const scoreSentence =
     diff.riskDelta !== 0 && diff.riskScore.previous !== null && diff.riskScore.current !== null
@@ -1047,12 +1102,17 @@ function changedSubject(diff, host, added, removed) {
   // necessarily stops firing in the later passes too, so that is the fuller statement.
   if (diff.materiality === MATERIALITY.IMPROVEMENT) {
     const group = removed[0];
-    const detail = group
-      ? group.names.length === 1
-        ? `${group.names[0]} no longer fires ${PASS_PHRASE_PRESENT[group.leadPass]}`
-        : `${group.names.length} trackers no longer fire ${PASS_PHRASE_PRESENT[group.leadPass]}`
-      : 'fewer observations than the previous check';
-    return `Tracking reduced on ${host} — ${detail}`;
+    if (group) {
+      const detail =
+        group.names.length === 1
+          ? `${group.names[0]} no longer fires ${PASS_PHRASE_PRESENT[group.leadPass]}`
+          : `${group.names.length} trackers no longer fire ${PASS_PHRASE_PRESENT[group.leadPass]}`;
+      return `Tracking reduced on ${host} — ${detail}`;
+    }
+    // Nothing stopped firing, so the improvement is something else — a consent platform now
+    // detected, a reject control now present. "Tracking reduced" would name a change that
+    // did not happen, in the line the reader trusts most because it is the shortest.
+    return `Consent configuration changed on ${host}`;
   }
 
   return `Configuration change observed on ${host}`;
@@ -1148,14 +1208,25 @@ function firstScanNarrative(diff, host) {
 }
 
 function notComparableNarrative(diff, host) {
+  // The opening line must not claim the scan failed when it did not. A pairing refusal —
+  // two different hosts, or a pair supplied in the wrong order — happens on scans that
+  // completed perfectly, and telling a client their scan broke is a false statement about
+  // their site's availability that they may well act on.
+  const capture = diff.blockedBy !== 'pairing';
   return {
     subject: `Scan of ${host} could not be compared to the previous check`,
     body: paragraphs([
-      `The latest scan of ${host} did not complete cleanly, so it has not been compared ` +
-        'to the previous check and no drift is being reported from it.',
-      diff.captureProblems.map((problem) => `- ${problem}`).join('\n'),
-      'Re-running the scan is the fix. Nothing here indicates anything about the site ' +
-        'itself; it describes the measurement.',
+      capture
+        ? `The latest scan of ${host} did not complete cleanly, so it has not been compared ` +
+            'to the previous check and no drift is being reported from it.'
+        : `The latest scan of ${host} completed, but it could not be set against the ` +
+            'previous check, so no drift is being reported from the pair.',
+      (diff.captureProblems || []).map((problem) => `- ${problem}`).join('\n'),
+      capture
+        ? 'Re-running the scan is the fix. Nothing here indicates anything about the site ' +
+            'itself; it describes the measurement.'
+        : 'Nothing here indicates anything about the site itself; it describes the two ' +
+            'scans that were offered for comparison.',
     ]),
   };
 }

@@ -89,9 +89,10 @@ function gppHeaderFor(sectionId) {
  *
  * Opt-out values: 0 not applicable, 1 opted out, 2 did not opt out.
  */
-function uscaSection({ saleOptOut, sharingOptOut = 0, gpc = null }) {
+function uscaSection({ saleOptOut, sharingOptOut = 0, gpc = null, notices = 1 }) {
   const core = encodeFromBits(
-    int(1, 6) + int(1, 2) + int(1, 2) + int(1, 2) + int(saleOptOut, 2) + int(sharingOptOut, 2) +
+    int(1, 6) + int(notices, 2) + int(notices, 2) + int(notices, 2) +
+      int(saleOptOut, 2) + int(sharingOptOut, 2) +
       '0'.repeat(18) + '0'.repeat(4) + int(0, 2) + int(1, 2) + int(1, 2) + int(0, 2)
   );
   if (gpc === null) return core;
@@ -272,6 +273,25 @@ test('1--- states the rules were judged not to apply, which is not a consent rec
   );
 });
 
+test('the US Privacy sentence reports the notice character it actually read', () => {
+  // The notice character is independent of the opt-out character. '1NNN' records notice NOT
+  // given, and a report telling a client their string said otherwise is a fabricated fact
+  // that the first engineer to decode it themselves will catch.
+  const pinterest = { name: 'Pinterest Tag', category: 'ad-pixel' };
+
+  const noticeNotGiven = assessTrackerRequest('https://ct.pinterest.com/v3/?us_privacy=1NNN', pinterest);
+  assert.equal(noticeNotGiven.status, CONSENT_STATUS.GRANTED);
+  assert.match(noticeNotGiven.explanation, /records notice not given/);
+
+  const noticeUnknown = assessTrackerRequest('https://ct.pinterest.com/v3/?us_privacy=1-N-', pinterest);
+  assert.match(noticeUnknown.explanation, /notice status not stated/);
+
+  assert.match(
+    assessTrackerRequest('https://ct.pinterest.com/v3/?us_privacy=1YNN', pinterest).explanation,
+    /records notice given/
+  );
+});
+
 test('a malformed US Privacy String is reported as unreadable, not as a grant', () => {
   for (const value of ['', 'YYN', '1YY', 'nonsense', null, undefined]) {
     const decoded = decodeUsPrivacyString(value);
@@ -358,6 +378,56 @@ test('a Global Privacy Control flag inside a GPP string is recognised as a denia
   assert.equal(parsed.consentDenied, true);
 });
 
+test('a GPP section whose opt-out fields are all "not applicable" is not read as a grant', () => {
+  // 0 is the spec's "Not Applicable", glossed as "the Business does not Sell Personal Data".
+  // It records that the question never arose. Reading it as the visitor declining to opt out
+  // would manufacture a consent state out of a section that states none.
+  const url = `https://ct.pinterest.com/v3/?gpp=${gppString(8, uscaSection({ saleOptOut: 0, sharingOptOut: 0, notices: 0 }))}`;
+  const parsed = parseConsentSignals(url);
+
+  assert.equal(parsed.consentDenied, null);
+  assert.equal(
+    assessTrackerRequest(url, { name: 'Pinterest Tag', category: 'ad-pixel' }).status,
+    CONSENT_STATUS.UNKNOWN
+  );
+  assert.ok(
+    explainConsentSignals(parsed).detail.some((line) => /no opt-out choice was recorded/.test(line)),
+    'the prose must not describe an absent choice as "no opt-out recorded"'
+  );
+});
+
+test('a GPP section too short to hold its opt-out fields is undecoded, not a grant', () => {
+  // Six bits is a version and nothing else. Every field read off it comes back null, which
+  // must stay distinguishable from a section that recorded "did not opt out".
+  const truncated = encodeFromBits(int(1, 6));
+  const url = `https://ct.pinterest.com/v3/?gpp=${gppString(8, truncated)}`;
+  const parsed = parseConsentSignals(url);
+
+  assert.equal(parsed.signals.gpp.sections.usca.decoded, false);
+  assert.equal(parsed.consentDenied, null);
+  assert.equal(
+    assessTrackerRequest(url, { name: 'Pinterest Tag', category: 'ad-pixel' }).status,
+    CONSENT_STATUS.UNKNOWN
+  );
+});
+
+test('a GPP section list large enough to exhaust the process is refused', () => {
+  // Both the item count and each group run length are attacker-controlled and they multiply.
+  // Before the ceiling, a few hundred characters of crafted input expanded into hundreds of
+  // thousands of sections, and a few thousand characters took the scanner's process down.
+  // The scanner reads these strings off pages it does not control, so this is load-bearing.
+  const item = '1' + '11' + '0101010101010101' + '1';
+  const hostile = encodeFromBits(int(3, 6) + int(1, 6) + int(4095, 12) + item.repeat(4095));
+
+  const started = Date.now();
+  const parsed = parseConsentSignals(`https://ct.pinterest.com/v3/?gpp=${hostile}`);
+
+  assert.deepEqual(parsed.signals.gpp.sectionIds, []);
+  assert.equal(parsed.consentDenied, null);
+  assert.ok(Date.now() - started < 1000, 'decoding must not scale with the claimed section count');
+  assert.equal(detectPrivacyStrings(`https://ct.pinterest.com/v3/?gpp=${hostile}`).gpp.decoded, false);
+});
+
 test('a GPP section whose layout is not verified is reported present but undecoded', () => {
   // Virginia (section 9) has its own field order. Reading it with California's offsets
   // would produce a confident wrong answer, so the section is named and left alone.
@@ -393,6 +463,15 @@ test('the presence detector reports unreadable framework strings rather than dro
     [clean.usPrivacy, clean.gpp, clean.tcf, clean.gdprApplies],
     [null, null, null, null]
   );
+
+  // A URL the parser cannot read must return the same shape, so a caller reading a field off
+  // the result gets null rather than undefined and cannot mistake one for a decoded value.
+  assert.deepEqual(detectPrivacyStrings('not a url'), {
+    usPrivacy: null,
+    gpp: null,
+    tcf: null,
+    gdprApplies: null,
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -462,17 +541,46 @@ test('no report copy in this module asserts legality, violation or exposure', ()
   // Saying otherwise in a document sent to a company is practising law without a licence.
   const forbidden = /\b(illegal|unlawful|violat\w*|non-?compliant|liabilit\w*|you are in breach)\b/i;
 
+  // Every URL below is chosen to reach a different branch of the prose, because a guard that
+  // only walks the two easy paths proves nothing about the sentences a real scan emits.
+  const urls = [
+    'https://ads.example.net/px?us_privacy=1YYN',
+    'https://ads.example.net/px?us_privacy=1NNN',
+    'https://ads.example.net/px?us_privacy=1---',
+    'https://ads.example.net/px?us_privacy=garbage',
+    'https://www.facebook.com/tr/?dpo=LDU&dpoco=1&dpost=1000',
+    'https://www.facebook.com/tr/?dpo=&dpoco=0&dpost=0',
+    'https://www.facebook.com/tr/?dpo=unrecognised-value',
+    'https://www.google-analytics.com/g/collect?gcs=G100&gcd=11l1l1l1l5',
+    'https://www.google-analytics.com/g/collect?gcs=G111',
+    'https://static.hotjar.com/c/hotjar-1.js',
+    `https://ads.example.net/px?gdpr=1&gdpr_consent=${TCF_EXAMPLE}`,
+    `https://ads.example.net/px?gdpr=1&gdpr_consent=${TCF_PURPOSE_ONE_GRANTED}`,
+    'https://ads.example.net/px?gdpr=1&gdpr_consent=undecodable',
+    `https://ct.pinterest.com/v3/?gpp=${gppString(8, uscaSection({ saleOptOut: 1 }))}`,
+    `https://ct.pinterest.com/v3/?gpp=${gppString(8, uscaSection({ saleOptOut: 2, sharingOptOut: 2 }))}`,
+    `https://ct.pinterest.com/v3/?gpp=${gppString(8, uscaSection({ saleOptOut: 0, sharingOptOut: 0, notices: 0 }))}`,
+    `https://ct.pinterest.com/v3/?gpp=${gppString(8, uscaSection({ saleOptOut: 2, gpc: true }))}`,
+    'https://ct.pinterest.com/v3/?gpp=undecodable',
+  ];
+
   const copy = [
     ...Object.values(CONSENT_STATUS_MEANING),
-    ...['1YYN', '1YNN', '1---'].flatMap((value) => {
-      const parsed = parseConsentSignals(`https://ads.example.net/px?us_privacy=${value}`);
+    ...urls.flatMap((url) => {
+      const parsed = parseConsentSignals(url);
       const explained = explainConsentSignals(parsed);
-      return [explained.summary, explained.caveat, ...explained.detail];
+      return [
+        explained.summary,
+        explained.caveat,
+        ...explained.detail,
+        assessTrackerRequest(url, AD_PIXEL).explanation,
+        assessTrackerRequest(url, META_PIXEL).explanation,
+        assessTrackerRequest(url, SESSION_REPLAY).explanation,
+      ];
     }),
-    assessTrackerRequest('https://www.facebook.com/tr/?dpo=LDU&dpoco=1&dpost=1000', META_PIXEL).explanation,
-    assessTrackerRequest('https://www.google-analytics.com/g/collect?gcs=G100', ANALYTICS).explanation,
-    assessTrackerRequest('https://static.hotjar.com/c/hotjar-1.js', SESSION_REPLAY).explanation,
   ];
+
+  assert.ok(copy.length > 100, 'the guard must actually walk the prose branches');
 
   for (const line of copy) {
     assert.doesNotMatch(line, forbidden, `report copy must stay factual: ${line}`);

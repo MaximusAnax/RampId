@@ -125,7 +125,7 @@ function readInt(bits, start, length) {
   return Number.parseInt(bits.slice(start, start + length), 2);
 }
 
-/** Two-letter country/language code: each letter is six bits, a = 0. */
+/** Two-letter country/language code: each letter is six bits, A = 0. */
 function readLetters(bits, start, count) {
   let out = '';
   for (let i = 0; i < count; i += 1) {
@@ -159,10 +159,17 @@ function readFibonacci(bits, start) {
 /**
  * Range(Fibonacci): a 12-bit count, then per item a group flag, an offset from the last
  * emitted ID, and for groups a run length. Used by the GPP header to list its sections.
+ *
+ * `limit` is a hard ceiling on how many IDs may be produced, and it is a safety control
+ * rather than a tuning knob. Both the item count and each group's run length come out of a
+ * string this scanner read off a page it does not control, and they multiply: a few hundred
+ * characters of crafted or corrupt input expands into millions of entries and exhausts the
+ * process. Nothing legitimate comes near the ceiling, so exceeding it is treated as an
+ * undecodable string.
  */
-function readFibonacciRange(bits, start) {
+function readFibonacciRange(bits, start, limit) {
   const amount = readInt(bits, start, 12);
-  if (amount === null) return null;
+  if (amount === null || amount > limit) return null;
 
   const ids = [];
   let cursor = start + 12;
@@ -182,9 +189,11 @@ function readFibonacciRange(bits, start) {
       const length = readFibonacci(bits, cursor);
       if (!length) return null;
       cursor = length.next;
+      if (ids.length + length.value + 1 > limit) return null;
       for (let id = first; id <= first + length.value; id += 1) ids.push(id);
       last = first + length.value;
     } else {
+      if (ids.length + 1 > limit) return null;
       ids.push(first);
       last = first;
     }
@@ -341,9 +350,20 @@ export const GPP_SECTIONS = {
   21: 'usnj',
   22: 'ustn',
   23: 'usmn',
+  24: 'usmd',
+  25: 'usin',
+  26: 'usky',
+  27: 'usri',
 };
 
 const GPP_HEADER_TYPE = 3;
+
+/**
+ * The specification registers 27 sections and a string carries at most one of each. The
+ * ceiling is deliberately loose enough to survive new registrations and still refuse the
+ * kind of section list that only a corrupt or hostile string produces.
+ */
+const GPP_MAX_SECTIONS = 64;
 
 /**
  * Opt-out field offsets for the two sections whose Core layout was read directly from the
@@ -351,6 +371,11 @@ const GPP_HEADER_TYPE = 3;
  * would produce confident nonsense - so they are reported as present and left undecoded.
  *
  * Values in all three fields: 0 = not applicable, 1 = opted out, 2 = did not opt out.
+ *
+ * 0 is not a consumer choice. The specification glosses it as "the Business does not Sell
+ * Personal Data", which records that the question never arose - so it decodes to null, the
+ * same as a field that could not be read at all, and only an explicit 2 counts as the
+ * consumer declining to opt out.
  */
 const GPP_OPT_OUT_LAYOUTS = {
   // MSPA US National: Version(6) SharingNotice SaleOptOutNotice SharingOptOutNotice
@@ -370,13 +395,23 @@ function decodeGppSection(name, payload) {
   const coreBits = toBitString(subsections[0]);
   if (!coreBits) return null;
 
-  const section = { name, version: readInt(coreBits, 0, 6), optOuts: null, globalPrivacyControl: null };
+  const section = {
+    name,
+    version: readInt(coreBits, 0, 6),
+    optOuts: null,
+    fieldsRead: 0,
+    globalPrivacyControl: null,
+  };
 
   const layout = GPP_OPT_OUT_LAYOUTS[name];
   if (layout) {
     const optOuts = {};
     for (const [field, offset] of Object.entries(layout)) {
       const value = readInt(coreBits, offset, 2);
+      // A truncated section returns null here. Counting how many fields actually carried a
+      // value is what keeps "this section says nothing" distinguishable from "this section
+      // says nobody opted out" further down.
+      if (value !== null) section.fieldsRead += 1;
       optOuts[field] = value === 1 ? true : value === 2 ? false : null;
     }
     section.optOuts = optOuts;
@@ -409,7 +444,7 @@ export function parseGppString(value) {
   if (!headerBits || headerBits.length < 24) return null;
   if (readInt(headerBits, 0, 6) !== GPP_HEADER_TYPE) return null;
 
-  const range = readFibonacciRange(headerBits, 12);
+  const range = readFibonacciRange(headerBits, 12, GPP_MAX_SECTIONS);
   const sectionIds = range ? range.ids : [];
 
   const sections = {};
@@ -429,7 +464,9 @@ export function parseGppString(value) {
       return;
     }
     const decoded = decodeGppSection(name, payload);
-    sections[name] = decoded ? { ...decoded, decoded: Boolean(decoded.optOuts) } : { name, decoded: false };
+    sections[name] = decoded
+      ? { ...decoded, decoded: decoded.fieldsRead > 0 }
+      : { name, decoded: false };
     if (decoded?.globalPrivacyControl === true) globalPrivacyControl = true;
     else if (decoded?.globalPrivacyControl === false && globalPrivacyControl === null) {
       globalPrivacyControl = false;
@@ -605,7 +642,7 @@ export function detectPrivacyStrings(requestUrl) {
   try {
     params = new URL(requestUrl).searchParams;
   } catch {
-    return { usPrivacy: null, gpp: null, tcf: null };
+    return { usPrivacy: null, gpp: null, tcf: null, gdprApplies: null };
   }
 
   const usPrivacyRaw = firstParam(params, US_PRIVACY_PARAMS);
@@ -620,7 +657,11 @@ export function detectPrivacyStrings(requestUrl) {
     // A present-but-unreadable string is reported as present. Silently dropping it would
     // let a malformed CMP output look identical to a site with no framework at all.
     usPrivacy: usPrivacyRaw ? { present: true, decoded: usPrivacy?.valid === true, ...(usPrivacy ?? {}) } : null,
-    gpp: gppRaw ? { present: true, decoded: gpp !== null, ...(gpp ?? { raw: gppRaw }) } : null,
+    // A GPP header that parses but lists no readable section has not been decoded in any
+    // sense the caller can use, so it is reported the same way as one that failed outright.
+    gpp: gppRaw
+      ? { present: true, decoded: (gpp?.sectionIds.length ?? 0) > 0, ...(gpp ?? { raw: gppRaw }) }
+      : null,
     tcf: tcfRaw ? { present: true, decoded: tcf !== null, ...(tcf ?? { raw: tcfRaw }) } : null,
     gdprApplies: params.has('gdpr') ? params.get('gdpr') === '1' : null,
   };
@@ -640,21 +681,25 @@ function verdictForGoogle(googleSignals) {
 function verdictForGpp(gpp) {
   if (gpp.globalPrivacyControl === true) return true;
 
-  let sawDecodedSection = false;
+  let sawAffirmative = false;
   for (const section of Object.values(gpp.sections)) {
     if (section.tcf) {
       if (section.tcf.deviceStorageConsent === false) return true;
-      sawDecodedSection = true;
+      sawAffirmative = true;
       continue;
     }
     if (!section.optOuts) continue;
-    sawDecodedSection = true;
-    if (Object.values(section.optOuts).some((optedOut) => optedOut === true)) return true;
+    const recorded = Object.values(section.optOuts);
+    if (recorded.some((optedOut) => optedOut === true)) return true;
+    if (recorded.some((optedOut) => optedOut === false)) sawAffirmative = true;
   }
 
-  // A GPP string whose sections are all "did not opt out" is an affirmative statement.
-  // A string whose sections could not be decoded says nothing, and must not be read as one.
-  return sawDecodedSection ? false : null;
+  // Only an explicit "did not opt out" makes this affirmative. Applying the layout to a
+  // section is not the same as reading a choice out of it: a truncated section, and one
+  // whose every field is the spec's "not applicable", both leave nothing but nulls behind.
+  // Treating either as a grant would turn "unreadable" into "the visitor agreed", which is
+  // the inference this module exists to refuse.
+  return sawAffirmative ? false : null;
 }
 
 /**
@@ -854,11 +899,20 @@ export function assessTrackerRequest(requestUrl, trackerMeta = {}) {
         'that the visitor opted out of the sale of their personal information.',
     });
   } else if (usPrivacy?.valid && usPrivacy.optedOut === false) {
+    // The notice character is independent of the opt-out character: '1NNN' and '1-N-' are
+    // both "no opt-out recorded", and describing either of them as notice having been given
+    // would put a statement in the report that the string does not make.
+    const notice =
+      usPrivacy.noticeGiven === true
+        ? 'notice given'
+        : usPrivacy.noticeGiven === false
+          ? 'notice not given'
+          : 'the notice status not stated';
     grants.push({
       framework: FRAMEWORK.US_PRIVACY,
       text:
-        `${label} carried US Privacy String ${usPrivacy.raw}, which records notice given and ` +
-        'no opt-out of sale recorded.',
+        `${label} carried US Privacy String ${usPrivacy.raw}, which records ${notice} and no ` +
+        'opt-out of the sale of personal information.',
     });
   }
 
@@ -989,13 +1043,28 @@ export function explainConsentSignals(parsed) {
 
   const meta = signals.metaLimitedDataUse;
   if (meta) {
+    // An empty dpo is Meta's documented way of sending no data-processing option at all. Any
+    // other unrecognised value is just unrecognised, and reading it as "unrestricted" would
+    // state something about the site's configuration that was not observed.
+    const unrestricted =
+      'Meta Limited Data Use: the parameter was present but did not request the restriction, ' +
+      'so the event was sent for unrestricted use.';
+    // The value itself is not quoted into the sentence. Every other value this module prints
+    // is one it validated against a fixed shape first; this one is arbitrary text copied off
+    // a page the scanner does not control, and report copy is not the place to start
+    // trusting the caller to escape it.
+    const unrecognised =
+      'Meta Limited Data Use: the parameter was present but carried a value this scanner does ' +
+      'not recognise, so what it asked Meta to do cannot be stated.';
+
     detail.push(
       meta.limitedDataUse
         ? 'Meta Limited Data Use: the request asked Meta to treat the event as restricted, ' +
           'which rules out custom audiences and retargeting from it' +
           (meta.stateLabel ? ` (jurisdiction sent as ${meta.stateLabel}).` : '.')
-        : 'Meta Limited Data Use: the parameter was present but did not request the restriction, ' +
-          'so the event was sent for unrestricted use.'
+        : meta.raw === null
+          ? unrestricted
+          : unrecognised
     );
   }
 
@@ -1022,13 +1091,19 @@ export function explainConsentSignals(parsed) {
     detail.push(`Global Privacy Platform: string present, covering ${gpp.sectionNames.join(', ')}.`);
     for (const section of Object.values(gpp.sections)) {
       if (!section.optOuts) continue;
-      const optedOutOf = Object.entries(section.optOuts)
-        .filter(([, value]) => value === true)
-        .map(([field]) => field);
+      const entries = Object.entries(section.optOuts);
+      const optedOutOf = entries.filter(([, value]) => value === true).map(([field]) => field);
+      const declined = entries.some(([, value]) => value === false);
+
+      // Three outcomes, not two. A section where every field is the spec's "not applicable",
+      // or one too short to read, records no choice at all - and "no opt-out recorded" would
+      // read to a client as the visitor having declined to opt out.
       detail.push(
         optedOutOf.length
           ? `Global Privacy Platform (${section.name}): opt-out recorded for ${optedOutOf.join(', ')}.`
-          : `Global Privacy Platform (${section.name}): no opt-out recorded.`
+          : declined
+            ? `Global Privacy Platform (${section.name}): no opt-out recorded.`
+            : `Global Privacy Platform (${section.name}): no opt-out choice was recorded either way.`
       );
     }
     if (gpp.globalPrivacyControl === true) {

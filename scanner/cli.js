@@ -13,11 +13,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { scanConsent } from './src/consent.js';
 import { monitorAll, triage } from './src/monitor.js';
+import { runCampaign } from './src/campaign.js';
 import { scanSite } from './src/scan.js';
 import { renderReport } from './src/report.js';
 
 const argv = process.argv.slice(2);
-const MODES = new Set(['consent', 'ai50', 'monitor']);
+const MODES = new Set(['consent', 'ai50', 'monitor', 'campaign']);
 const mode = MODES.has(argv[0]) ? argv[0] : 'consent';
 const rest = MODES.has(argv[0]) ? argv.slice(1) : argv;
 
@@ -31,7 +32,8 @@ const concurrency = Math.max(1, Number(flag('concurrency', 2)));
 
 if (!targets.length) {
   console.error(
-    'usage: node cli.js [consent|ai50|monitor] <url...> [--out=dir] [--concurrency=2] [--data=dir]'
+    'usage: node cli.js [consent|ai50|monitor|campaign] <target...> ' +
+      '[--out=dir] [--concurrency=2] [--data=dir] [--sector=name] [--sender=name]'
   );
   process.exit(1);
 }
@@ -57,6 +59,57 @@ async function pool(items, n, fn) {
     })
   );
   return out;
+}
+
+if (mode === 'campaign') {
+  const sector = flag('sector', 'unspecified sector');
+  const senderName = flag('sender', null);
+
+  const result = await runCampaign(targets, {
+    concurrency,
+    sector,
+    senderName,
+    onScan: (scan, err) =>
+      process.stderr.write(
+        err ? `  failed  ${err.url}  ${err.error}\n` : `  scanned ${scan.url}  risk ${scan.riskScore}\n`
+      ),
+  });
+
+  const draftsDir = path.join(outDir, 'drafts');
+  const reportsDir = path.join(outDir, 'reports');
+  fs.mkdirSync(draftsDir, { recursive: true });
+  fs.mkdirSync(reportsDir, { recursive: true });
+
+  for (const item of result.ranked) {
+    fs.writeFileSync(path.join(reportsDir, `${slug(item.url)}.html`), item.report);
+    if (item.draft) {
+      fs.writeFileSync(
+        path.join(draftsDir, `${slug(item.url)}.txt`),
+        `Subject: ${item.draft.subject}\n\n${item.draft.body}\n`
+      );
+    }
+  }
+  if (result.indexHtml) fs.writeFileSync(path.join(outDir, 'sector-index.html'), result.indexHtml);
+
+  console.log('\n=== CAMPAIGN ===');
+  console.log(
+    `${result.requested} requested · ${result.scanned} scanned · ` +
+      `${result.usable} usable · ${result.contactable} with a draft`
+  );
+  if (result.rejected?.length) {
+    console.log(`\n${result.rejected.length} target(s) rejected before scanning:`);
+    for (const r of result.rejected.slice(0, 10)) console.log(`  ${r.input} — ${r.reason}`);
+  }
+  console.log('\nRanked queue:');
+  for (const item of result.ranked) {
+    console.log(
+      `  ${String(item.riskScore).padStart(3)}  ${slug(item.url).padEnd(38)} ` +
+        `${item.findingIds.join(',') || 'clean'}${item.draft ? '' : '   (nothing to say)'}`
+    );
+  }
+  console.log(`\nreports → ${reportsDir}`);
+  console.log(`drafts  → ${draftsDir}   (read them before sending anything)`);
+  process.exit(0);
 }
 
 if (mode === 'monitor') {
