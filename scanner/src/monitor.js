@@ -26,6 +26,15 @@ import { diffScans, summarizeDrift, findCaptureProblems, DRIFT_STATUS } from './
  */
 const HISTORY_WALKBACK = 12;
 
+/** The directory a target's history lands in, used only to collapse duplicate forms. */
+function storeKeyFor(url) {
+  try {
+    return new URL(url.startsWith('http') ? url : `https://${url}`).host.toLowerCase();
+  } catch {
+    return String(url).toLowerCase();
+  }
+}
+
 /**
  * Run one monitoring cycle for a single target.
  *
@@ -98,14 +107,28 @@ export async function monitorTarget(url, opts = {}) {
  */
 export async function monitorAll(urls, opts = {}) {
   const { concurrency = 2, onResult = null } = opts;
+
+  // Collapse targets that resolve to the same stored history before scanning.
+  //
+  // Different URL forms of one host — http and https, with and without a path — share a
+  // store directory, so leaving duplicates in place has two concurrent writers appending to
+  // one timeline and comparing each other's scans. That produces drift alerts describing
+  // changes that never happened.
+  const seen = new Map();
+  for (const url of urls) {
+    const key = storeKeyFor(url);
+    if (!seen.has(key)) seen.set(key, url);
+  }
+  const targets = [...seen.values()];
+
   const results = [];
   let cursor = 0;
 
   await Promise.all(
-    Array.from({ length: Math.min(concurrency, urls.length) }, async () => {
-      while (cursor < urls.length) {
+    Array.from({ length: Math.min(concurrency, targets.length) }, async () => {
+      while (cursor < targets.length) {
         const index = cursor++;
-        const url = urls[index];
+        const url = targets[index];
         try {
           const result = await monitorTarget(url, opts);
           results[index] = result;
@@ -145,6 +168,17 @@ export function triage(results) {
       problems.push({ url: r.url, reason: r.reason });
       continue;
     }
+    // A pair of scans that could not be compared is a gap in coverage, not a quiet week.
+    // Filing it under "unchanged" leaves the operator believing a client is being watched
+    // while nothing is actually being checked.
+    if (r.diff?.status === DRIFT_STATUS.NOT_COMPARABLE) {
+      problems.push({
+        url: r.url,
+        reason: (r.diff.captureProblems || []).join('; ') || 'scans could not be compared',
+      });
+      continue;
+    }
+
     if (!r.diff?.hasChanges) continue;
 
     // riskDelta is deliberately null when no comparison was possible, so compare

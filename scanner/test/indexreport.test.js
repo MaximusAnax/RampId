@@ -12,6 +12,17 @@
  */
 
 import { test } from 'node:test';
+
+
+/**
+ * Render with the anonymity sample floor lowered.
+ *
+ * Production refuses to publish an index built from fewer than MINIMUM_SAMPLE sites, because
+ * a small sample identifies its members however thoroughly names are scrubbed. These tests
+ * exercise rendering itself on deliberately tiny fixtures, so they opt out explicitly — the
+ * floor gets its own dedicated test rather than being weakened here.
+ */
+const render = (index) => renderIndexHtml(index, { minimumSample: 1 });
 import assert from 'node:assert/strict';
 
 import {
@@ -373,7 +384,7 @@ test('an empty sample reports nothing rather than reporting zeroes', () => {
   assert.deepEqual(i.trackers.overall, []);
   assert.equal(i.consentPlatform.transmittedPreConsentDespitePlatform.shareOfPlatformSites, null);
 
-  const html = renderIndexHtml(i);
+  const html = render(i);
   assert.ok(html.startsWith('<!doctype html>'));
   assert.match(html, /No measurable sites in this sample/);
   assert.ok(!/NaN|undefined|Infinity/.test(html), 'an empty sample must not render arithmetic debris');
@@ -382,7 +393,7 @@ test('an empty sample reports nothing rather than reporting zeroes', () => {
 
 test('the rendered page never contains a company name, hostname or URL from the input', () => {
   const scans = sampleScans();
-  const html = renderIndexHtml(buildIndex(scans, { sector: 'US direct-to-consumer retail', period: 'July 2026' }));
+  const html = render(buildIndex(scans, { sector: 'US direct-to-consumer retail', period: 'July 2026' }));
   const identifiers = collectIdentifiers(scans);
 
   assert.ok(identifiers.length >= scans.length, 'every input site must contribute an identifier');
@@ -400,7 +411,7 @@ test('rendering fails loudly when a company name would appear in the page', () =
   const tainted = buildIndex(scans, { sector: 'US retail, including Northwind Wellness, Inc.' });
 
   assert.throws(
-    () => renderIndexHtml(tainted),
+    () => render(tainted),
     (err) => {
       assert.ok(err instanceof AnonymityError, 'must be the dedicated error, not a generic throw');
       assert.ok(
@@ -415,7 +426,7 @@ test('rendering fails loudly when a company name would appear in the page', () =
 test('rendering fails loudly when a hostname would appear in the page', () => {
   const scans = sampleScans();
   const tainted = buildIndex(scans, { sector: 'US retail', period: 'July 2026, shop.northwind-wellness.com onward' });
-  assert.throws(() => renderIndexHtml(tainted), AnonymityError);
+  assert.throws(() => render(tainted), AnonymityError);
 });
 
 test('the guard sees through HTML escaping', () => {
@@ -446,7 +457,7 @@ test('a tracker sample URL carrying the page address never reaches the aggregate
   const view = anonymizeScan(scan);
   assert.equal(JSON.stringify(view).includes('ravenglass'), false, 'the strip step must drop sample URLs');
 
-  const html = renderIndexHtml(buildIndex([scan], { sector: 'Test sector' }));
+  const html = render(buildIndex([scan], { sector: 'Test sector' }));
   assert.ok(!/ravenglass/i.test(html));
   assert.match(html, /Meta Pixel/, 'the service itself is still reported, only the URL is dropped');
 });
@@ -463,7 +474,7 @@ test('scanning a tracking vendor does not permanently block publication', () => 
     riskScore: 30,
   });
 
-  const html = renderIndexHtml(buildIndex([scan], { sector: 'Test sector' }));
+  const html = render(buildIndex([scan], { sector: 'Test sector' }));
   assert.match(html, /Hotjar/);
   assert.ok(!/hotjar\.com/i.test(html), 'the hostname is still an identifier and must not appear');
 });
@@ -476,7 +487,7 @@ test('a serialised index refuses to render rather than skipping the check', () =
   assert.equal(JSON.stringify(built).includes('northwind'), false, 'the index JSON must be publishable');
 
   const roundTripped = JSON.parse(JSON.stringify(built));
-  assert.throws(() => renderIndexHtml(roundTripped), (err) => {
+  assert.throws(() => render(roundTripped), (err) => {
     assert.ok(err instanceof AnonymityError);
     assert.match(err.message, /buildIndex/, 'the error must say how to recover');
     return true;
@@ -484,7 +495,7 @@ test('a serialised index refuses to render rather than skipping the check', () =
 });
 
 test('the published page states observations and never a legal conclusion', () => {
-  const html = renderIndexHtml(index());
+  const html = render(index());
   for (const banned of [/\bviolat/i, /\billegal\b/i, /non-?compliant/i, /breaking the law/i, /you (are|may be) liable/i]) {
     assert.ok(!banned.test(html), `the index must not assert a legal conclusion: ${banned}`);
   }
@@ -494,7 +505,7 @@ test('the published page states observations and never a legal conclusion', () =
 });
 
 test('the methodology states the sample, the dates and what the method cannot see', () => {
-  const html = renderIndexHtml(index());
+  const html = render(index());
   assert.match(html, /2026-07-10 to 2026-07-14/, 'the measurement window must be stated');
   assert.match(html, /7 sites submitted/);
   assert.match(html, /Server-side tagging/);
@@ -521,7 +532,7 @@ test('the reject-control figure is not described as a share of sites that showed
   const i = buildIndex([platformOnly], { sector: 'Test' });
   assert.equal(i.rejectControl.consentMechanismPresent.count, 1, 'a named platform counts as a mechanism');
 
-  const html = renderIndexHtml(i);
+  const html = render(i);
   assert.ok(
     !/of sites showing a consent banner/i.test(html),
     'the headline card must describe the denominator it was actually computed over'
@@ -532,7 +543,7 @@ test('the reject-control figure is not described as a share of sites that showed
 test('caller-supplied labels are escaped rather than injected into the page', () => {
   // The sector and period are the only free text a caller supplies, and this artifact is
   // published rather than read once, so an unescaped label would be a stored injection.
-  const html = renderIndexHtml(
+  const html = render(
     buildIndex([], { sector: '<script>alert(1)</script>', period: '" onmouseover="alert(2)' })
   );
   assert.ok(!/<script>alert/i.test(html), 'the tag must not survive as markup');
@@ -551,7 +562,7 @@ test('a blocked publication says where the collision could have come from', () =
   // switch the guard off.
   const scan = makeScan({ url: 'https://www.honda.com/', company: 'Honda' });
   assert.throws(
-    () => renderIndexHtml(buildIndex([scan], { sector: 'US automotive' })),
+    () => render(buildIndex([scan], { sector: 'US automotive' })),
     (err) => {
       assert.ok(err instanceof AnonymityError);
       assert.match(err.message, /enforcement/i, 'the message must not blame the sector label alone');
@@ -561,7 +572,7 @@ test('a blocked publication says where the collision could have come from', () =
 });
 
 test('the page is self-contained and renders its distribution without external resources', () => {
-  const html = renderIndexHtml(index());
+  const html = render(index());
   assert.ok(!/<script/i.test(html), 'no scripts: the page must survive being mirrored offline');
   // Not only a bandwidth concern: any external request would let the artifact report who is
   // reading it, which is an odd property for a document about tracking without consent.
@@ -569,4 +580,35 @@ test('the page is self-contained and renders its distribution without external r
   assert.match(html, /prefers-color-scheme: dark/);
   assert.match(html, /overflow-x:auto/);
   assert.match(html, /class="barfill" style="width:\d/, 'the distribution is drawn with plain HTML and CSS');
+});
+
+test('an index too small to be anonymous refuses to publish', () => {
+  // Anonymity is a statistical property, not a string-matching one. In an index built from a
+  // handful of companies, every figure on the page describes identifiable companies exactly,
+  // and no amount of name scrubbing changes that. A reader who knows which sector was
+  // sampled can re-identify members of a small set from the cell values alone.
+  const scans = Array.from({ length: 3 }, (_, i) => makeScan({ url: `https://shop${i}.example/` }));
+  const built = buildIndex(scans, { sector: 'US retail', period: 'August 2026' });
+
+  assert.throws(() => renderIndexHtml(built), AnonymityError);
+  assert.throws(() => renderIndexHtml(built), /at least 20 measured sites/);
+});
+
+test('an index of nothing is allowed, because it identifies nobody', () => {
+  const built = buildIndex([], { sector: 'US retail', period: 'August 2026' });
+  const html = renderIndexHtml(built);
+  assert.ok(html.length > 0, 'the empty case renders an honest "nothing measured" page');
+});
+
+test('hostname labels are matched against their prose form', async () => {
+  // "acme-corp.com" and "Acme Corp" were different strings to the guard, so the check meant
+  // to stop a company being named in a published document passed on exactly the inputs
+  // production generates.
+  const { collectIdentifiers } = await import('../src/indexreport.js');
+  const ids = collectIdentifiers([makeScan({ url: 'https://acme-corp.example/' })]);
+  const normalized = ids.map((x) => String(x).toLowerCase().replace(/[-_]+/g, ' '));
+  assert.ok(
+    normalized.some((x) => x.includes('acme corp')),
+    'the hyphenated hostname must normalise to its prose form'
+  );
 });

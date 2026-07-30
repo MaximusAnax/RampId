@@ -1,0 +1,11 @@
+{
+  "companyName": null,
+  "contactNotes": null,
+  "tier": null,
+  "monitoringEnabled": false,
+  "target": "https://dup-fixture.example/",
+  "slug": "dup-fixture.example",
+  "firstSeen": "2026-07-30T23:32:07.440Z",
+  "lastScanAt": "2026-07-30T23:32:27.728Z",
+  "updatedAt": "2026-07-30T23:32:27.746Z"
+}

@@ -400,12 +400,19 @@ const BARE_HOST_AND_PORT = /^[^\s:/\\?#]+:\d+(?:[/?#]|$)/;
  * reports its host as "etc", because URL tolerates extra slashes for special schemes. That
  * would file a scan of "/etc/passwd" under a target named "etc" instead of refusing it.
  */
+/** Anything that already declared a scheme must parse as a URL or be refused outright. */
+const SCHEME_PREFIXED = /^[a-z][a-z0-9+.-]*:\/\//i;
+
 function resolveHost(raw) {
   let parsed = null;
   try {
     parsed = new URL(raw);
   } catch {
-    /* not an absolute URL; read it as a bare host below */
+    // A target that already declared a scheme and still failed to parse is malformed, not a
+    // bare host. Falling through would split it at the first separator and file it under the
+    // scheme itself, so several unrelated companies would share one evidence directory —
+    // worse than a loud failure.
+    if (SCHEME_PREFIXED.test(raw)) return null;
   }
 
   if (parsed) {

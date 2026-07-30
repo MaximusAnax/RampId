@@ -207,7 +207,7 @@ export function renderReport(scan, { company = null } = {}) {
 <p class="lede">${esc(name)} · observed ${esc(new Date(scan.scannedAt).toUTCString())}</p>
 
 <div class="score">
-  <b>${scan.riskScore}</b>
+  <b>${esc(scan.riskScore)}</b>
   <span class="muted">exposure score out of 100 &middot; ${findings.length} finding(s)
   &middot; consent mechanism: ${
     scan.cmp?.length
@@ -241,14 +241,18 @@ ${
                report should not be read as its absence on the site.</p>`
             : ''
         }${findingCards}`
-      : `<h2>What we observed</h2>
-         <p class="ok">No pre-consent tracking, opt-out failures, or post-rejection
-         transmission were observed on the page tested.</p>
-         ${
-           scan.capture && !scan.capture.ok
-             ? `<p class="muted">${esc(scan.capture.note)}</p>`
-             : ''
-         }`
+      : scan.capture && !scan.capture.ok
+        ? // An incomplete capture with nothing found is the most misleading combination in
+          // the system: green text reads as a verdict, and here there is no verdict to give.
+          // The caveat goes above the observation, and the observation is narrowed to what
+          // was actually tested.
+          `<h2>What we observed</h2>
+           <p class="muted"><strong>Incomplete capture.</strong> ${esc(scan.capture.note)}</p>
+           <p>Nothing was observed in the passes that did complete. That is not a clean
+           result for the site, only for what could be measured.</p>`
+        : `<h2>What we observed</h2>
+           <p class="ok">No pre-consent tracking, opt-out failures, or post-rejection
+           transmission were observed on the page tested.</p>`
 }
 
 <h2>Method</h2>

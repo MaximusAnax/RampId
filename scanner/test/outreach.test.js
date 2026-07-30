@@ -550,3 +550,35 @@ test('sentence counting is not fooled by dotted tokens or an initial', () => {
   assert.equal(countSentences('— A. Ndiongue'), 0);
   assert.equal(countSentences(''), 0);
 });
+
+test('a legal conclusion cannot be smuggled past the guard by rephrasing', () => {
+  // The guard listed specific words, so a conclusion could be stated in plain English
+  // without using any of them. Punctuation also defeated two patterns outright.
+  for (const attempt of [
+    'Your site does not comply with the regulation.',
+    'This is non compliant.',
+    'A class-action was filed over this.',
+    'You are required to display this.',
+    'This falls short of your obligations.',
+    'You could face a penalty.',
+    'The agency fined a company for this.',
+  ]) {
+    assert.throws(
+      () => assertFactualCopy(attempt),
+      /never sends/i,
+      `should have been blocked: ${attempt}`
+    );
+  }
+});
+
+test('factual observations and neutral statements of law are still allowed', () => {
+  // The guard has to stay usable. Describing what a regulation says in general is not a
+  // conclusion about the reader, and blocking it would leave nothing sendable.
+  for (const allowed of [
+    'A request was sent to facebook.com/tr before any consent interaction.',
+    'California regulations require a business that processes the signal to display it.',
+    'The page showed nothing indicating the signal had been processed.',
+  ]) {
+    assert.doesNotThrow(() => assertFactualCopy(allowed), `should be allowed: ${allowed}`);
+  }
+});

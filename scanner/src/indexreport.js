@@ -42,6 +42,8 @@ import { corpusStats } from './entities.js';
  * Only the finding id, which comes from a closed set, crosses the boundary.
  */
 const FINDING_TITLES = {
+  OPTOUT_NOT_DISPLAYED:
+    'No indication displayed that an opt-out preference signal was processed',
   PRE_CONSENT: 'Third-party trackers transmitted before any consent interaction',
   GPC_IGNORED: 'Trackers continued transmitting with Global Privacy Control enabled',
   REJECT_IGNORED: 'Trackers continued transmitting after the reject control was clicked',
@@ -199,10 +201,18 @@ const HTML_ENTITIES = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '
  * newline in the middle; neither should evade the check.
  */
 function normalizeForMatching(text) {
-  return String(text ?? '')
-    .replace(/&(?:amp|lt|gt|quot|#39);/g, (m) => HTML_ENTITIES[m])
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
+  return (
+    String(text ?? '')
+      .replace(/&(?:amp|lt|gt|quot|#39);/g, (m) => HTML_ENTITIES[m])
+      .toLowerCase()
+      // Fold hyphens and underscores to spaces so a hostname label matches its prose form.
+      // Without this "acme-corp.com" and "Acme Corp" are different strings to the guard, and
+      // the check that is supposed to stop a company being named in a published research
+      // document silently passes on exactly the inputs production produces.
+      .replace(/[-_]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
 }
 
 function occursIn(haystack, term) {
@@ -715,7 +725,35 @@ function spreadPlot(distribution) {
  * @param {ReturnType<typeof buildIndex>} index
  * @returns {string} complete HTML document
  */
-export function renderIndexHtml(index) {
+/**
+ * Below this many measured sites, publishing is refused outright.
+ *
+ * Anonymity is a statistical property, not a string-matching one. In an index built from one
+ * company, every figure on the page describes that company exactly, and no amount of name
+ * scrubbing changes it. A reader who knows which sector was sampled can often re-identify
+ * members of a small set from the cell values alone.
+ */
+export const MINIMUM_SAMPLE = 20;
+
+/** Cells describing fewer sites than this are rolled into an "other" bucket. */
+const MINIMUM_CELL = 3;
+
+export function renderIndexHtml(index, { minimumSample = MINIMUM_SAMPLE } = {}) {
+  // minimumSample is overridable only so tests can exercise rendering on small fixtures.
+  // Lowering it for a real publication defeats the point: the floor exists because a small
+  // sample identifies its members whatever the string scrubbing does.
+  const measured = index?.sample?.measured ?? 0;
+
+  // An index of nothing identifies nobody, so the floor does not apply to it. It renders the
+  // honest "nothing was measured" page instead, which is a legitimate output.
+  if (measured > 0 && measured < minimumSample) {
+    throw new AnonymityError(
+      `Refusing to render an index of ${measured} site(s). A published index needs at least ` +
+        `${minimumSample} measured sites, because below that the statistics describe ` +
+        'identifiable companies however thoroughly names are removed.'
+    );
+  }
+
   const expectedIdentifiers = Number(index?.anonymity?.identifierCount ?? 0);
   const identifiers = Array.isArray(index?.sourceIdentifiers) ? index.sourceIdentifiers : null;
 

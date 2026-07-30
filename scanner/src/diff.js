@@ -123,6 +123,22 @@ export function findCaptureProblems(scan, label = 'scan') {
       problems.push(`The ${label} ${key} pass ended with an error: ${pass.error}`);
       continue;
     }
+    // A challenge or error page loads successfully, records requests, and contains no
+    // trackers — because there is no site there. Without these checks that scores as a
+    // perfect clean pass, and against a previously leaky baseline it narrates every finding
+    // as resolved. That is the single worst thing this system can tell a paying client.
+    if (pass.blocked === true) {
+      problems.push(
+        `The ${label} ${key} pass was served an interstitial or error page` +
+          (pass.status ? ` (HTTP ${pass.status})` : '') +
+          ' rather than the site.'
+      );
+      continue;
+    }
+    if (pass.loaded === false) {
+      problems.push(`The ${label} ${key} pass did not load.`);
+      continue;
+    }
     // A pass that loaded anything at all records at least its own document request, so
     // zero normally means the capture failed rather than that the page is clean — and a
     // clean-looking failure is exactly the input that would fabricate an improvement.

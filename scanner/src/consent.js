@@ -349,9 +349,7 @@ function buildFindings({ A, B, C, reject, consentPlatforms, bannerVisible }) {
       severity: 'critical',
       title: `${gpcIgnored.length} tracker(s) continued firing with Global Privacy Control enabled`,
       detail:
-        'The request advertised Sec-GPC: 1 and navigator.globalPrivacyControl = true. ' +
-        'California regulations effective 1 January 2026 require opt-out preference signals ' +
-        'to be honoured.',
+        'The request advertised Sec-GPC: 1 and navigator.globalPrivacyControl = true.',
       trackers: gpcIgnored.map((t) => t.name),
     });
   }
@@ -414,9 +412,7 @@ function buildFindings({ A, B, C, reject, consentPlatforms, bannerVisible }) {
       detail:
         'A consent banner is present but no reject or decline control could be found at the ' +
         'same level as accept. Automated interaction may miss a control that is only reachable ' +
-        'through a preferences dialog, so this warrants a manual check before it is relied on. ' +
-        'Asymmetric consent design has drawn direct enforcement — the CPPA fined Honda ' +
-        '$632,500 in a matter involving asymmetric opt-out flows.',
+        'through a preferences dialog, so this warrants a manual check before it is relied on.',
       trackers: [],
     });
   }

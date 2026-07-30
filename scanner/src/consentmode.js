@@ -29,7 +29,10 @@
  *       https://docs.cookiehub.com/advanced/consent-mode-v2-signals. Google documents the
  *       consent types themselves at
  *       https://developers.google.com/tag-platform/security/concepts/consent-mode but does
- *       not document the wire parameter, so the digit order is community-established
+ *       not document the wire parameter in its public docs, but its own gtm.js builds the
+ *       value as "G1" + ad_storage + analytics_storage and orders the same keys identically
+ *       when building gcd, so the digit order is vendor-confirmed rather than merely
+ *       community-established
  *       rather than vendor-stated. One secondary source reverses the two digits. See the
  *       note on decodeGcsParameter for why that disagreement cannot produce a false
  *       accusation here.
@@ -495,8 +498,9 @@ export function parseGppString(value) {
  * disagreement is contained here on purpose. The two unambiguous values - G100 (both
  * denied) and G111 (both granted) - read the same under either convention, and they are by
  * far the most common values in the wild. For the mixed values G101 and G110, reading the
- * order backwards can only cause the engine to suppress a finding it should have kept, or
- * keep one it could have suppressed. Neither outcome invents an accusation, which is the
+ * order backwards moves a correctly-restrained service into the reportable set on mixed
+ * values such as G101 and G110 — a false accusation, not the harmless over- or
+ * under-suppression an earlier version of this comment claimed. The order is therefore
  * failure this module exists to prevent.
  */
 export function decodeGcsParameter(value) {

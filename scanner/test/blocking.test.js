@@ -165,3 +165,56 @@ test('monitoring walks back past a failed cycle to the last good scan', async ()
 
   await fsp.rm(dataRoot, { recursive: true, force: true });
 });
+
+test('capture problems name a blocked pass so drift is never derived from it', async () => {
+  // The upstream status check alone was not enough: the differ has its own capture gate, and
+  // a challenge page passed it because the challenge page's own assets make the request count
+  // non-zero and set no error. That is how a blocked cycle became "all findings resolved".
+  const { findCaptureProblems } = await import('../src/diff.js');
+
+  const blockedScan = {
+    url: 'https://shop.example/',
+    capture: { ok: false, usable: false, blocked: true, passesLoaded: 0, note: 'challenge served' },
+    errors: [],
+    passes: {
+      baseline: { requestCount: 3, observedRequestCount: 3, loaded: false, blocked: true, status: 403 },
+      gpc: { requestCount: 3, observedRequestCount: 3, loaded: false, blocked: true, status: 403 },
+      afterReject: { requestCount: 3, observedRequestCount: 3, loaded: false, blocked: true, status: 403 },
+    },
+  };
+
+  const problems = findCaptureProblems(blockedScan, 'current scan');
+  assert.ok(problems.length > 0, 'a blocked scan must never be treated as comparable');
+  assert.ok(problems.some((p) => /interstitial|error page|blocked/i.test(p)));
+});
+
+test('a target that could not be compared is a problem, not a quiet week', async () => {
+  const { DRIFT_STATUS } = await import('../src/diff.js');
+  const t = triage([
+    {
+      url: 'https://shop.example/',
+      skipped: false,
+      alert: null,
+      diff: {
+        status: DRIFT_STATUS.NOT_COMPARABLE,
+        hasChanges: false,
+        riskDelta: null,
+        captureProblems: ['the previous scan was blocked'],
+      },
+    },
+  ]);
+  assert.equal(t.problems.length, 1, 'must surface as a coverage gap');
+  assert.equal(t.quiet, 0, 'and must not be counted as unchanged');
+});
+
+test('duplicate URL forms of one host are collapsed before scanning', async () => {
+  // Two writers appending to one stored timeline compare each other's scans and produce
+  // drift alerts describing changes that never happened.
+  const { monitorAll } = await import('../src/monitor.js');
+  const seen = [];
+  await monitorAll(
+    ['https://dup-fixture.example/', 'https://dup-fixture.example/checkout'],
+    { concurrency: 1, settleMs: 200, dataRoot: undefined, onResult: (r) => seen.push(r.url) }
+  );
+  assert.equal(seen.length, 1, 'the same host must be scanned once per cycle');
+});
