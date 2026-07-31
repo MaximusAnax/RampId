@@ -272,3 +272,78 @@ test('the probe drives a real widget and captures the agent reply', async (t) =>
   assert.equal(r.finding.agentSaid, '90 days');
   assert.equal(r.finding.policySays, '30 days');
 });
+
+// ---------------------------------------------------------------- outreach
+
+test('a clean audit produces no message at all', async () => {
+  // Manufacturing a reason to contact a company whose agent behaved correctly is how this
+  // becomes spam, and the restraint is what makes the messages that do go out credible.
+  const { generateOutreach } = await import('../src/outreach.js');
+  assert.equal(generateOutreach({ url: 'https://x.example/', findings: [] }), null);
+  assert.equal(
+    generateOutreach({ url: 'https://x.example/', findings: [], inconclusive: 'no agent found' }),
+    null
+  );
+});
+
+test('the message quotes both sides so the reader can check it without replying', async () => {
+  const { generateOutreach } = await import('../src/outreach.js');
+  const m = generateOutreach({
+    url: 'https://larkfield.example/',
+    startedAt: '2026-07-31T09:00:00.000Z',
+    findings: [{
+      id: 'AGENT_CONTRADICTS_POLICY', area: 'returns', severity: 'high',
+      title: 'differs', agentSaid: '90 days', policySays: '30 days',
+      policySource: 'https://larkfield.example/returns',
+      transcript: 'You can return any item within 90 days.',
+      reproducedIn: '3 of 3 independent sessions',
+      detail: 'x',
+    }],
+  }, { company: 'Larkfield' });
+
+  assert.ok(m.body.includes('90 days'), 'must quote what the agent said');
+  assert.ok(m.body.includes('30 days'), 'must quote what the policy says');
+  assert.ok(m.body.includes('https://larkfield.example/returns'), 'must cite the source');
+  assert.ok(/check it in a minute/i.test(m.body), 'must tell them how to verify it themselves');
+});
+
+test('the message never characterises intent or wields the precedent', async () => {
+  const { assertAgentCopy } = await import('../src/outreach.js');
+  // The Air Canada precedent is why this matters, not something to hold over anyone. Their
+  // counsel already knows it, and raising it turns a helpful note into a threat.
+  for (const attempt of [
+    'Your assistant lied to me about the returns window.',
+    'This is a hallucination.',
+    'Air Canada was held liable for exactly this.',
+    'This could cost you a lot.',
+    'You would be bound by what your agent said.',
+    'Your agent misled a customer.',
+  ]) {
+    assert.throws(() => assertAgentCopy(attempt), /never sends/i, `should block: ${attempt}`);
+  }
+});
+
+test('a factual comparison is still allowed through the guard', async () => {
+  const { assertAgentCopy } = await import('../src/outreach.js');
+  assert.doesNotThrow(() =>
+    assertAgentCopy('The assistant answered 90 days. Your published page says 30 days.')
+  );
+});
+
+test('the verification sheet states exactly what is being claimed', async () => {
+  const { generateOutreach } = await import('../src/outreach.js');
+  const m = generateOutreach({
+    url: 'https://x.example/',
+    startedAt: '2026-07-31T09:00:00.000Z',
+    findings: [{
+      id: 'AGENT_CONTRADICTS_POLICY', area: 'returns', severity: 'high', title: 't',
+      agentSaid: '90 days', policySays: '30 days', policySource: 'https://x.example/returns',
+      transcript: 'ninety days', reproducedIn: '2 of 3 independent sessions', detail: 'x',
+    }],
+  });
+  const sheet = m.plainFacts.join('\n');
+  assert.ok(/Agent said: 90 days/.test(sheet));
+  assert.ok(/Published policy says: 30 days/.test(sheet));
+  assert.ok(/Reproduced in: 2 of 3/.test(sheet));
+  assert.ok(/Transcript captured: yes/.test(sheet));
+});

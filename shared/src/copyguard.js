@@ -74,6 +74,13 @@ export const BANNED_PATTERNS = [
   { pattern: /[$£€]\s?\d/, reason: 'a monetary figure in first contact reads as a threat' },
 ];
 
+function maskCapturedEvidence(text, capturedEvidence) {
+  return [...capturedEvidence]
+    .filter((item) => typeof item === 'string' && item.length >= 6)
+    .sort((a, b) => b.length - a.length)
+    .reduce((masked, item) => masked.split(item).join(' '), text);
+}
+
 export function findBannedPhrases(text, capturedEvidence = []) {
   const searched = maskCapturedEvidence(String(text ?? ''), capturedEvidence);
   const found = [];
