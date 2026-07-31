@@ -24,7 +24,7 @@ import { extractClaims, questionSet, questionFor, POLICY_AREAS } from '../src/po
 import { compareReply, assessProbe, extractValues, isHedged, isRefusal } from '../src/contradiction.js';
 import { probe, repliesByArea } from '../src/agentprobe.js';
 
-const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'agent');
+const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
 
 const POLICY_TEXT = `Returns. You may return most items within 30 days of delivery for a
 full refund. A 15% restocking fee applies to opened electronics. Shipping. Standard delivery

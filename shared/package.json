@@ -1,0 +1,15 @@
+{
+  "name": "@evidence/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    "./browser": "./src/browser.js",
+    "./store": "./src/store.js",
+    "./discover": "./src/discover.js",
+    "./copyguard": "./src/copyguard.js"
+  },
+  "scripts": { "test": "node --test --test-force-exit test/*.test.js" },
+  "dependencies": { "playwright": "1.56.1", "tldts": "^7.4.9" }
+}

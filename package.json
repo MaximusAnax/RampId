@@ -1,0 +1,12 @@
+{
+  "name": "outside-in-evidence",
+  "private": true,
+  "type": "module",
+  "workspaces": ["shared", "consent-evidence", "agent-audit"],
+  "scripts": {
+    "test": "npm run test --workspaces --if-present",
+    "test:shared": "npm test -w shared",
+    "test:consent": "npm test -w consent-evidence",
+    "test:agent": "npm test -w agent-audit"
+  }
+}

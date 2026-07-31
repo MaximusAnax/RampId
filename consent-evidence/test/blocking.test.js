@@ -118,7 +118,7 @@ test('monitoring walks back past a failed cycle to the last good scan', async ()
   // Without this, a single blocked cycle permanently erases the drift that happened across
   // it: the failure becomes the baseline, the next cycle compares against the failure, and
   // everything that changed in between is reported as unchanged. Nothing looks wrong.
-  const { createStore } = await import('../src/store.js');
+  const { createStore } = await import('@evidence/shared/store');
   const { monitorTarget } = await import('../src/monitor.js');
   const os = await import('node:os');
   const fsp = await import('node:fs/promises');

@@ -1,5 +1,5 @@
 {
-  "name": "article50-scanner",
+  "name": "@evidence/consent",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,13 +8,13 @@
     "scan": "./cli.js"
   },
   "scripts": {
-    "scan": "node cli.js",
     "test": "node --test --test-force-exit test/*.test.js"
   },
   "dependencies": {
     "playwright": "1.56.1",
     "third-party-web": "^0.29.2",
-    "tldts": "^7.4.9"
+    "tldts": "^7.4.9",
+    "@evidence/shared": "*"
   },
   "devDependencies": {
     "klaro": "^0.7.21",

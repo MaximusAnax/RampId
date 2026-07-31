@@ -12,7 +12,7 @@
  * under your name, and one false finding costs more than ten missed prospects.
  */
 
-import { normalizeTargets, dedupe, prioritize, buildScanPlan } from './discover.js';
+import { normalizeTargets, dedupe, prioritize, buildScanPlan } from '@evidence/shared/discover';
 import { scanConsent } from './consent.js';
 import { renderReport } from './report.js';
 import { generateOutreach } from './outreach.js';

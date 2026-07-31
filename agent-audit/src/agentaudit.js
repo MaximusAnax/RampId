@@ -6,18 +6,10 @@
  * tracking engine sell to enterprises without passing a vendor security review.
  */
 
-import { chromium } from 'playwright';
+import { launchBrowser } from '@evidence/shared/browser';
 import { extractClaims, questionSet, POLICY_PATHS } from './policy.js';
 import { probe, repliesByArea } from './agentprobe.js';
 import { assessProbe } from './contradiction.js';
-
-function stripProxyEnv(env) {
-  const cleaned = { ...env };
-  for (const key of Object.keys(cleaned)) {
-    if (/^(https?_proxy|all_proxy|no_proxy)$/i.test(key)) delete cleaned[key];
-  }
-  return cleaned;
-}
 
 /**
  * Read a company's published policy pages.
@@ -27,12 +19,7 @@ function stripProxyEnv(env) {
  */
 export async function readPolicies(baseUrl, { paths = POLICY_PATHS, maxPages = 6 } = {}) {
   const proxyServer = process.env.A50_PROXY || null;
-  const browser = await chromium.launch({
-    headless: true,
-    ...(proxyServer ? { proxy: { server: proxyServer, bypass: '127.0.0.1,localhost' } } : {}),
-    env: proxyServer ? process.env : stripProxyEnv(process.env),
-    args: ['--no-sandbox', '--disable-dev-shm-usage', ...(proxyServer ? [] : ['--no-proxy-server'])],
-  });
+  const browser = await launchBrowser();
   const context = await browser.newContext({ ignoreHTTPSErrors: true });
   const page = await context.newPage();
 

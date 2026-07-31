@@ -18,7 +18,7 @@
  *     is what makes a finding survive contact with a non-deterministic model.
  */
 
-import { chromium } from 'playwright';
+import { launchBrowser } from '@evidence/shared/browser';
 
 /** Selectors that open a chat widget, shared with the Article 50 module. */
 const LAUNCHER_SELECTORS = [
@@ -53,14 +53,6 @@ const INPUT_SELECTORS = [
   'textarea',
 ];
 
-function stripProxyEnv(env) {
-  const cleaned = { ...env };
-  for (const key of Object.keys(cleaned)) {
-    if (/^(https?_proxy|all_proxy|no_proxy)$/i.test(key)) delete cleaned[key];
-  }
-  return cleaned;
-}
-
 /**
  * Run one independent session: open the agent, ask each question once, record replies.
  *
@@ -77,12 +69,7 @@ export async function probeSession(url, questions, opts = {}) {
   } = opts;
 
   const proxyServer = process.env.A50_PROXY || null;
-  const browser = await chromium.launch({
-    headless,
-    ...(proxyServer ? { proxy: { server: proxyServer, bypass: '127.0.0.1,localhost' } } : {}),
-    env: proxyServer ? process.env : stripProxyEnv(process.env),
-    args: ['--no-sandbox', '--disable-dev-shm-usage', ...(proxyServer ? [] : ['--no-proxy-server'])],
-  });
+  const browser = await launchBrowser({ headless });
 
   const context = await browser.newContext({
     userAgent,

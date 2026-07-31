@@ -15,7 +15,7 @@
  */
 
 import { scanConsent } from './consent.js';
-import { createStore } from './store.js';
+import { createStore } from '@evidence/shared/store';
 import { diffScans, summarizeDrift, findCaptureProblems, DRIFT_STATUS } from './diff.js';
 
 /**
