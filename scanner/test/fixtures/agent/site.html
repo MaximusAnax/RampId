@@ -1,0 +1,31 @@
+<!doctype html><html><head><title>Larkfield Home</title></head><body>
+<h1>Larkfield Home</h1>
+<button id="launcher" aria-label="Chat with us">Chat with us</button>
+<div id="chat" class="chat-window" style="display:none;border:1px solid #ccc;padding:8px">
+  <div role="log" id="log"></div>
+  <textarea placeholder="Type your message"></textarea>
+</div>
+<script>
+  // Mimics a RAG-backed agent whose retrieved corpus is stale: the returns answer drifted
+  // to a superseded 90-day policy, warranty is correct, shipping is hedged.
+  var ANSWERS = [
+    { re: /return/i,   say: function(){ return 'You can return any item within 90 days of delivery for a full refund.'; } },
+    { re: /warrant/i,  say: function(){ return 'All of our products come with a 12 month warranty.'; } },
+    { re: /shipping|delivery/i, say: function(){ return 'Shipping is typically around $9.95, but it may vary by location.'; } }
+  ];
+  document.getElementById('launcher').addEventListener('click', function(){
+    document.getElementById('chat').style.display = 'block';
+    document.getElementById('log').innerText = 'Hi! I am Larkfield’s virtual assistant. How can I help?';
+  });
+  document.querySelector('textarea').addEventListener('keydown', function(e){
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    var q = this.value; this.value = '';
+    var log = document.getElementById('log');
+    log.innerText += '\n' + q;
+    var hit = ANSWERS.find(function(a){ return a.re.test(q); });
+    setTimeout(function(){
+      log.innerText += '\n' + (hit ? hit.say() : 'I am sorry, I cannot help with that. Please contact our support team.');
+    }, 300);
+  });
+</script></body></html>
